@@ -1,0 +1,40 @@
+# Flutter
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+/build/
+flutter_export_environment.sh
+*.dart.js
+*.js.map
+*.js
+*.json
+
+# Android
+android/app/google-services.json
+android/key.properties
+android/key.jks
+
+# iOS
+ios/Runner/GoogleService-Info.plist
+ios/firebase_app_id_file.json
+
+# Firebase
+lib/firebase_options.dart
+firebase.json
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Archivos generados
+.metadata/
