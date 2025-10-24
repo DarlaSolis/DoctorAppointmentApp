@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../utils/app_colors.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../app_colors.dart';
+import '../routes.dart';
 
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen>
+class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -56,10 +59,22 @@ class _RegisterScreenState extends State<RegisterScreen>
     setState(() => _isLoading = true);
 
     try {
-      await _auth.createUserWithEmailAndPassword(
+      // Crear usuario en Authentication
+      final userCredential = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+
+      // Obtener el UID del usuario recién creado
+      final user = userCredential.user!;
+
+      // Guardar datos básicos en Firestore usando el UID correcto
+      await _firestore.collection('usuarios').doc(user.uid).set({
+        'nombre': user.email?.split('@').first ?? 'Usuario',
+        'email': user.email,
+        'fecha_creacion': FieldValue.serverTimestamp(),
+        'ultima_actualizacion': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
@@ -129,11 +144,8 @@ class _RegisterScreenState extends State<RegisterScreen>
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  // Icono animado
                   _buildAnimatedIcon(),
                   const SizedBox(height: 30),
-
-                  // Card del formulario
                   _buildRegisterCard(),
                 ],
               ),
@@ -190,20 +202,12 @@ class _RegisterScreenState extends State<RegisterScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-
-              // Campo email
               _buildEmailField(),
               const SizedBox(height: 20),
-
-              // Campo contraseña
               _buildPasswordField(),
               const SizedBox(height: 30),
-
-              // Botón registrar
               _buildRegisterButton(),
               const SizedBox(height: 20),
-
-              // Volver al login
               _buildLoginSection(),
             ],
           ),
