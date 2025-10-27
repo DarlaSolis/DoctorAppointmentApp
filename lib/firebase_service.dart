@@ -1,11 +1,35 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+/**
+ * Servicio Firebase - Capa de acceso a datos para Firebase Firestore y Auth
+ * 
+ * Esta clase proporciona todos los métodos necesarios para interactuar con:
+ * - Firebase Authentication (usuarios)
+ * - Cloud Firestore (datos de la aplicación)
+ * - Gestión de citas médicas y disponibilidad
+ * 
+ * Implementa el patrón Repository para separar la lógica de datos de la UI
+ */
 class FirebaseService {
+  // Instancias de Firebase
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // ========== COLECCIÓN USUARIOS ==========
+  // ========== COLECCIÓN USUARIOS - CRUD OPERATIONS ==========
+
+  /**
+   * Guarda o actualiza la información de un usuario en Firestore
+   * @param uid ID único del usuario desde Firebase Auth
+   * @param nombre Nombre completo del usuario
+   * @param email Correo electrónico del usuario
+   * @param telefono Número telefónico (opcional)
+   * @param edad Edad del usuario (opcional)
+   * @param lugarNacimiento Lugar de nacimiento (opcional)
+   * @param padecimientos Condiciones médicas (opcional)
+   * 
+   * Usa SetOptions(merge: true) para actualizar sin sobrescribir campos existentes
+   */
   Future<void> guardarUsuario({
     required String uid,
     required String nombre,
@@ -19,32 +43,43 @@ class FirebaseService {
       await _firestore.collection('usuarios').doc(uid).set({
         'nombre': nombre,
         'email': email,
-        'telefono': telefono ?? '',
+        'telefono':
+            telefono ?? '', // Valores por defecto para campos opcionales
         'edad': edad ?? 0,
         'lugar_nacimiento': lugarNacimiento ?? '',
         'padecimientos': padecimientos ?? '',
-        'fecha_creacion': FieldValue.serverTimestamp(),
+        'fecha_creacion':
+            FieldValue.serverTimestamp(), // Timestamp automático del servidor
         'ultima_actualizacion': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      }, SetOptions(merge: true)); // Merge evita sobrescribir datos existentes
     } catch (e) {
       print('Error guardando usuario: $e');
-      rethrow;
+      rethrow; // Propaga el error para manejo en la UI
     }
   }
 
+  /**
+   * Obtiene los datos de un usuario específico por su UID
+   * @param uid ID único del usuario
+   * @return Map con datos del usuario o null si no existe
+   */
   Future<Map<String, dynamic>?> obtenerUsuario(String uid) async {
     try {
       final doc = await _firestore.collection('usuarios').doc(uid).get();
       if (doc.exists) {
         return doc.data();
       }
-      return null;
+      return null; // Usuario no encontrado
     } catch (e) {
       print('Error obteniendo usuario: $e');
-      return null;
+      return null; // Retorna null en caso de error
     }
   }
 
+  /**
+   * Actualiza el timestamp de la última sesión del usuario
+   * @param uid ID único del usuario
+   */
   Future<void> actualizarUltimaSesion(String uid) async {
     try {
       await _firestore.collection('usuarios').doc(uid).update({
@@ -53,12 +88,21 @@ class FirebaseService {
       });
     } catch (e) {
       print('Error al actualizar última sesión: $e');
+      // No rethrow - error no crítico
     }
   }
 
   // ========== COLECCIÓN CITAS - CRUD COMPLETO ==========
 
-  // CREATE - Crear nueva cita SIEMPRE con médico disponible
+  /**
+   * CREATE - Agenda una nueva cita médica automáticamente con médico disponible
+   * @param pacienteId ID del paciente que agenda la cita
+   * @param fechaHora Fecha y hora seleccionada para la cita
+   * @param motivo Razón de la consulta médica
+   * @param especialidad Especialidad médica requerida
+   * 
+   * Flujo: Busca médico disponible → Crea cita → Marca horario como ocupado
+   */
   Future<void> agendarCita({
     required String pacienteId,
     required DateTime fechaHora,
@@ -66,90 +110,164 @@ class FirebaseService {
     required String especialidad,
   }) async {
     try {
-      // BUSCAR UN MÉDICO DISPONIBLE para esta fecha/hora
+      // BUSCAR UN MÉDICO DISPONIBLE para esta fecha/hora automáticamente
       final medicoId = await _obtenerMedicoDisponible(fechaHora, especialidad);
 
+      // Crear referencia de documento con ID automático
       final citaRef = _firestore.collection('citas').doc();
 
+      // Guardar la cita en Firestore
       await citaRef.set({
-        'id': citaRef.id,
-        'paciente_id': pacienteId,
-        'medico_id': medicoId,
-        'fecha_hora': Timestamp.fromDate(fechaHora),
+        'id': citaRef.id, // ID único de la cita
+        'paciente_id': pacienteId, // Referencia al paciente
+        'medico_id': medicoId, // Médico asignado automáticamente
+        'fecha_hora': Timestamp.fromDate(
+          fechaHora,
+        ), // Conversión a Timestamp de Firestore
         'motivo': motivo,
         'especialidad': especialidad,
-        'estado': 'pendiente',
+        'estado': 'pendiente', // Estado inicial de la cita
         'fecha_creacion': FieldValue.serverTimestamp(),
       });
 
-      // Marcar horario como ocupado
+      // Marcar el horario del médico como ocupado
       await marcarHorarioOcupado(medicoId, fechaHora);
 
-      print(' Cita agendada con médico: $medicoId');
+      print('Cita agendada con médico: $medicoId');
     } catch (e) {
       print('Error agendando cita: $e');
       rethrow;
     }
   }
 
-  // Método para obtener un médico disponible
+  /**
+   * Método privado para encontrar un médico disponible
+   * @param fechaHora Fecha y hora deseada para la cita
+   * @param especialidad Especialidad médica requerida
+   * @return ID del médico disponible encontrado
+   * 
+   * Estrategia: Busca en disponibilidad → Fallback por especialidad
+   */
   Future<String> _obtenerMedicoDisponible(
     DateTime fechaHora,
     String especialidad,
   ) async {
     try {
-      // Buscar médicos disponibles en este horario
+      // Buscar médicos disponibles en este horario específico
       final horariosDisponibles = await _firestore
           .collection('disponibilidad_medicos')
           .where('hora_inicio', isEqualTo: Timestamp.fromDate(fechaHora))
           .where('esta_disponible', isEqualTo: true)
           .get();
 
+      // Si hay horarios disponibles, usar el primer médico encontrado
       if (horariosDisponibles.docs.isNotEmpty) {
-        // Usar el primer médico disponible
         final medicoId = horariosDisponibles.docs.first['medico_id'] as String;
         print('Médico disponible encontrado: $medicoId');
         return medicoId;
       }
 
-      // Si no hay disponibles, buscar médico por especialidad
+      // Si no hay disponibles, usar fallback por especialidad
       print(
         'No hay horarios disponibles, buscando por especialidad: $especialidad',
       );
       return await _obtenerMedicoPorEspecialidad(especialidad);
     } catch (e) {
       print('Error obteniendo médico disponible: $e');
-      return await _obtenerMedicoPorEspecialidad(especialidad); // Fallback
+      return await _obtenerMedicoPorEspecialidad(
+        especialidad,
+      ); // Fallback seguro
     }
   }
 
-  // Asignar médico por especialidad como fallback
+  /**
+   * Fallback: Asigna médico basado en especialidad (para desarrollo/demo)
+   * @param especialidad Especialidad médica requerida
+   * @return ID del médico asignado por especialidad
+   */
   Future<String> _obtenerMedicoPorEspecialidad(String especialidad) async {
+    // Mapeo de especialidades a médicos específicos
     final medicosPorEspecialidad = {
       'Cardiólogo': 'medico_001',
       'Pediatra': 'medico_002',
       'Dermatólogo': 'medico_003',
-      'Ortopedista': 'medico_001',
+      'Ortopedista':
+          'medico_001', // Algunos médicos tienen múltiples especialidades
       'Ginecólogo': 'medico_002',
     };
 
+    // Obtener médico o usar médico general por defecto
     final medicoId = medicosPorEspecialidad[especialidad] ?? 'medico_general';
     print('Usando médico por especialidad: $medicoId');
     return medicoId;
   }
 
-  // READ - Obtener citas del usuario
-  Stream<QuerySnapshot> obtenerCitasUsuario(String usuarioId) {
+  /**
+   * READ - Obtener citas de un usuario específico con ordenamiento personalizado
+   * @param usuarioId ID del usuario cuyas citas se quieren obtener
+   * @return Stream de listas de DocumentSnapshot con citas ordenadas
+   * 
+   * Ordenamiento: Pendientes primero → Mismo estado por fecha → Canceladas al final
+   */
+  Stream<List<DocumentSnapshot>> obtenerCitasUsuario(String usuarioId) {
     try {
-      print('🔍 INICIANDO STREAM para usuario: $usuarioId');
+      print('INICIANDO STREAM para usuario: $usuarioId');
       return _firestore
           .collection('citas')
           .where('paciente_id', isEqualTo: usuarioId)
-          .orderBy('fecha_hora', descending: false)
+          // SIN orderBy para evitar problemas de índice temporalmente
           .snapshots()
+          .map((snapshot) {
+            final citas = snapshot.docs.toList();
+
+            if (citas.isEmpty) {
+              print('No hay citas para el usuario');
+              return citas;
+            }
+
+            print('CITAS RECIBIDAS: ${citas.length}');
+
+            // ORDENAR POR ESTADO: Pendientes primero, Canceladas al final
+            citas.sort((a, b) {
+              final estadoA = a['estado'] as String? ?? 'pendiente';
+              final estadoB = b['estado'] as String? ?? 'pendiente';
+
+              // PENDIENTES primero (valor más bajo = primero)
+              if (estadoA == 'pendiente' && estadoB != 'pendiente') return -1;
+              if (estadoA != 'pendiente' && estadoB == 'pendiente') return 1;
+
+              // CANCELADAS al final (valor más alto = último)
+              if (estadoA == 'cancelada' && estadoB != 'cancelada') return 1;
+              if (estadoA != 'cancelada' && estadoB == 'cancelada') return -1;
+
+              // Si tienen el mismo estado, ordenar por fecha (ascendente)
+              try {
+                final fechaA = (a['fecha_hora'] as Timestamp).toDate();
+                final fechaB = (b['fecha_hora'] as Timestamp).toDate();
+                return fechaA.compareTo(
+                  fechaB,
+                ); // Ascendente: más antigua primero
+              } catch (e) {
+                return 0; // En caso de error, mantener orden original
+              }
+            });
+
+            // DEBUG: Mostrar orden final en consola
+            for (int i = 0; i < citas.length; i++) {
+              final doc = citas[i];
+              final estado = doc['estado'] as String? ?? 'pendiente';
+              final fecha = (doc['fecha_hora'] as Timestamp).toDate();
+              final motivo = doc['motivo'] as String? ?? 'Sin motivo';
+              print(
+                '${i + 1}. Estado: $estado, Fecha: ${fecha.day}/${fecha.month}, Motivo: $motivo',
+              );
+            }
+
+            return citas;
+          })
           .handleError((error) {
             print('ERROR en stream: $error');
-            throw error;
+            throw error; // Propagar error para manejo en UI
           });
     } catch (e) {
       print('Error obteniendo citas usuario: $e');
@@ -157,21 +275,28 @@ class FirebaseService {
     }
   }
 
-  // READ - Obtener cita específica por ID
+  /**
+   * READ - Obtener una cita específica por su ID
+   * @param citaId ID único de la cita
+   * @return Map con datos de la cita o null si no existe
+   */
   Future<Map<String, dynamic>?> obtenerCitaPorId(String citaId) async {
     try {
       final doc = await _firestore.collection('citas').doc(citaId).get();
       if (doc.exists) {
         return doc.data();
       }
-      return null;
+      return null; // Cita no encontrada
     } catch (e) {
       print('Error obteniendo cita: $e');
       return null;
     }
   }
 
-  // READ - Obtener todas las citas (para admin)
+  /**
+   * READ - Obtener todas las citas (para administradores)
+   * @return Stream de todas las citas ordenadas por fecha
+   */
   Stream<QuerySnapshot> obtenerTodasLasCitas() {
     try {
       return _firestore
@@ -184,7 +309,11 @@ class FirebaseService {
     }
   }
 
-  // READ - Obtener citas por estado
+  /**
+   * READ - Obtener citas filtradas por estado
+   * @param estado Estado de las citas a filtrar
+   * @return Stream de citas con el estado especificado
+   */
   Stream<QuerySnapshot> obtenerCitasPorEstado(String estado) {
     try {
       return _firestore
@@ -198,7 +327,15 @@ class FirebaseService {
     }
   }
 
-  // UPDATE - Actualizar cita con médico disponible
+  /**
+   * UPDATE - Actualizar una cita existente con nuevo médico disponible
+   * @param citaId ID de la cita a actualizar
+   * @param nuevaFechaHora Nueva fecha y hora para la cita
+   * @param nuevoMotivo Nuevo motivo de la consulta
+   * @param nuevaEspecialidad Nueva especialidad requerida
+   * 
+   * Flujo: Liberar horario anterior → Buscar nuevo médico → Ocupar nuevo horario
+   */
   Future<void> actualizarCita({
     required String citaId,
     required DateTime nuevaFechaHora,
@@ -206,29 +343,29 @@ class FirebaseService {
     required String nuevaEspecialidad,
   }) async {
     try {
-      // Obtener la cita actual
+      // Obtener la cita actual para datos anteriores
       final citaActual = await obtenerCitaPorId(citaId);
       if (citaActual != null) {
         final medicoIdAnterior = citaActual['medico_id'] as String;
         final fechaHoraTimestamp = citaActual['fecha_hora'] as Timestamp;
         final fechaHoraAnterior = fechaHoraTimestamp.toDate();
 
-        // BUSCAR MÉDICO DISPONIBLE para el nuevo horario
+        // BUSCAR NUEVO MÉDICO DISPONIBLE para el nuevo horario
         final nuevoMedicoId = await _obtenerMedicoDisponible(
           nuevaFechaHora,
           nuevaEspecialidad,
         );
 
-        // Liberar horario anterior si el médico cambió
+        // Liberar horario anterior solo si cambió médico o fecha
         if (medicoIdAnterior != nuevoMedicoId ||
             fechaHoraAnterior != nuevaFechaHora) {
           await _liberarHorario(medicoIdAnterior, fechaHoraAnterior);
         }
 
-        // Ocupar nuevo horario
+        // Ocupar nuevo horario con el nuevo médico
         await marcarHorarioOcupado(nuevoMedicoId, nuevaFechaHora);
 
-        // Actualizar la cita
+        // Actualizar la cita con los nuevos datos
         await _firestore.collection('citas').doc(citaId).update({
           'medico_id': nuevoMedicoId,
           'fecha_hora': Timestamp.fromDate(nuevaFechaHora),
@@ -245,10 +382,15 @@ class FirebaseService {
     }
   }
 
-  // DELETE - Eliminar/Cancelar cita
+  /**
+   * DELETE - Cancelar una cita (soft delete)
+   * @param citaId ID de la cita a cancelar
+   * 
+   * Flujo: Liberar horario → Cambiar estado a "cancelada" → Mantener historial
+   */
   Future<void> eliminarCita(String citaId) async {
     try {
-      // Obtener datos de la cita antes de cancelar
+      // Obtener datos de la cita antes de cancelar para liberar horario
       final cita = await obtenerCitaPorId(citaId);
       if (cita != null) {
         final medicoId = cita['medico_id'] as String;
@@ -259,7 +401,7 @@ class FirebaseService {
         await _liberarHorario(medicoId, fechaHora);
       }
 
-      // Actualizar estado en lugar de eliminar (para mantener historial)
+      // Soft delete: Cambiar estado en lugar de eliminar (para mantener historial)
       await _firestore.collection('citas').doc(citaId).update({
         'estado': 'cancelada',
         'fecha_cancelacion': FieldValue.serverTimestamp(),
@@ -273,6 +415,14 @@ class FirebaseService {
   }
 
   // ========== COLECCIÓN DISPONIBILIDAD MÉDICOS ==========
+
+  /**
+   * Agregar un nuevo horario disponible para un médico
+   * @param medicoId ID del médico
+   * @param fecha Fecha del horario
+   * @param horaInicio Hora de inicio del horario
+   * @param horaFin Hora de fin del horario
+   */
   Future<void> agregarHorarioDisponible({
     required String medicoId,
     required DateTime fecha,
@@ -280,6 +430,7 @@ class FirebaseService {
     required DateTime horaFin,
   }) async {
     try {
+      // ID único para el horario (medicoId + timestamp)
       final horarioId = '${medicoId}_${fecha.millisecondsSinceEpoch}';
 
       await _firestore.collection('disponibilidad_medicos').doc(horarioId).set({
@@ -288,7 +439,7 @@ class FirebaseService {
         'fecha': Timestamp.fromDate(fecha),
         'hora_inicio': Timestamp.fromDate(horaInicio),
         'hora_fin': Timestamp.fromDate(horaFin),
-        'esta_disponible': true,
+        'esta_disponible': true, // Inicialmente disponible
         'fecha_creacion': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -297,6 +448,11 @@ class FirebaseService {
     }
   }
 
+  /**
+   * Marcar un horario específico como ocupado
+   * @param medicoId ID del médico
+   * @param fechaHora Fecha y hora a marcar como ocupada
+   */
   Future<void> marcarHorarioOcupado(String medicoId, DateTime fechaHora) async {
     try {
       final horarios = await _firestore
@@ -305,16 +461,22 @@ class FirebaseService {
           .where('hora_inicio', isEqualTo: Timestamp.fromDate(fechaHora))
           .get();
 
+      // Marcar todos los horarios coincidentes como no disponibles
       for (final doc in horarios.docs) {
         await doc.reference.update({'esta_disponible': false});
       }
       print('Horario ocupado para médico: $medicoId');
     } catch (e) {
       print('Error marcando horario ocupado: $e');
+      // No rethrow - error no crítico para flujo principal
     }
   }
 
-  // Liberar horario cuando se cancela o actualiza una cita
+  /**
+   * Método privado para liberar un horario (marcar como disponible)
+   * @param medicoId ID del médico
+   * @param fechaHora Fecha y hora a liberar
+   */
   Future<void> _liberarHorario(String medicoId, DateTime fechaHora) async {
     try {
       final horarios = await _firestore
@@ -323,39 +485,54 @@ class FirebaseService {
           .where('hora_inicio', isEqualTo: Timestamp.fromDate(fechaHora))
           .get();
 
+      // Marcar todos los horarios coincidentes como disponibles
       for (final doc in horarios.docs) {
         await doc.reference.update({'esta_disponible': true});
       }
       print('Horario liberado para médico: $medicoId');
     } catch (e) {
       print('Error liberando horario: $e');
+      // No rethrow - error no crítico
     }
   }
 
   // ========== MÉTODOS ADICIONALES ÚTILES ==========
 
-  // Verificar si usuario existe
+  /**
+   * Verificar si un usuario existe en Firestore
+   * @param uid ID único del usuario
+   * @return true si el usuario existe, false si no
+   */
   Future<bool> usuarioExiste(String uid) async {
     try {
       final doc = await _firestore.collection('usuarios').doc(uid).get();
       return doc.exists;
     } catch (e) {
       print('Error verificando usuario: $e');
-      return false;
+      return false; // En caso de error, asumir que no existe
     }
   }
 
-  // Verificar si usuario es admin (opcional)
+  /**
+   * Verificar si un usuario tiene privilegios de administrador
+   * @param uid ID único del usuario
+   * @return true si es admin, false si no
+   */
   Future<bool> esUsuarioAdmin(String uid) async {
     try {
       final doc = await _firestore.collection('usuarios').doc(uid).get();
-      return doc.data()?['es_admin'] == true;
+      return doc.data()?['es_admin'] == true; // Verificar campo booleano
     } catch (e) {
-      return false;
+      return false; // En caso de error, asumir que no es admin
     }
   }
 
-  // Obtener horarios disponibles de un médico
+  /**
+   * Obtener horarios disponibles de un médico en una fecha específica
+   * @param medicoId ID del médico
+   * @param fecha Fecha para consultar disponibilidad
+   * @return Stream de horarios disponibles ordenados por hora
+   */
   Stream<QuerySnapshot> obtenerHorariosDisponibles(
     String medicoId,
     DateTime fecha,
@@ -367,133 +544,15 @@ class FirebaseService {
           .where(
             'fecha',
             isEqualTo: Timestamp.fromDate(
-              DateTime(fecha.year, fecha.month, fecha.day),
+              DateTime(fecha.year, fecha.month, fecha.day), // Normalizar fecha
             ),
           )
           .where('esta_disponible', isEqualTo: true)
           .orderBy('hora_inicio')
           .snapshots();
     } catch (e) {
-      print('Error obteniendo horarios disponibles: $e');
+      print(' Error obteniendo horarios disponibles: $e');
       rethrow;
-    }
-  }
-
-  // ========== MÉTODOS PARA DATOS DE EJEMPLO ==========
-
-  // Poblar médicos de ejemplo
-  Future<void> poblarMedicosEjemplo() async {
-    try {
-      final List<Map<String, dynamic>> medicos = [
-        {
-          'id': 'medico_001',
-          'nombre': 'Dr. Carlos Rodríguez',
-          'especialidad': 'Cardiólogo',
-          'email': 'carlos.rodriguez@hospital.com',
-          'telefono': '+1234567890',
-          'experiencia': '10 años',
-          'fecha_creacion': FieldValue.serverTimestamp(),
-        },
-        {
-          'id': 'medico_002',
-          'nombre': 'Dra. María González',
-          'especialidad': 'Pediatra',
-          'email': 'maria.gonzalez@hospital.com',
-          'telefono': '+1234567891',
-          'experiencia': '8 años',
-          'fecha_creacion': FieldValue.serverTimestamp(),
-        },
-        {
-          'id': 'medico_003',
-          'nombre': 'Dr. Javier López',
-          'especialidad': 'Dermatólogo',
-          'email': 'javier.lopez@hospital.com',
-          'telefono': '+1234567892',
-          'experiencia': '12 años',
-          'fecha_creacion': FieldValue.serverTimestamp(),
-        },
-      ];
-
-      for (final medico in medicos) {
-        final medicoId = medico['id'] as String;
-        await _firestore.collection('medicos').doc(medicoId).set(medico);
-      }
-
-      print('Médicos de ejemplo creados exitosamente');
-    } catch (e) {
-      print('Error poblando médicos ejemplo: $e');
-    }
-  }
-
-  // Poblar horarios de ejemplo
-  Future<void> poblarHorariosEjemplo() async {
-    try {
-      final ahora = DateTime.now();
-
-      for (int i = 0; i < 7; i++) {
-        final fecha = ahora.add(Duration(days: i));
-
-        // Horarios para cada médico
-        for (int j = 1; j <= 3; j++) {
-          final medicoId = 'medico_00$j';
-
-          // Agregar varios horarios por día
-          await agregarHorarioDisponible(
-            medicoId: medicoId,
-            fecha: fecha,
-            horaInicio: DateTime(fecha.year, fecha.month, fecha.day, 9, 0),
-            horaFin: DateTime(fecha.year, fecha.month, fecha.day, 10, 0),
-          );
-
-          await agregarHorarioDisponible(
-            medicoId: medicoId,
-            fecha: fecha,
-            horaInicio: DateTime(fecha.year, fecha.month, fecha.day, 11, 0),
-            horaFin: DateTime(fecha.year, fecha.month, fecha.day, 12, 0),
-          );
-
-          await agregarHorarioDisponible(
-            medicoId: medicoId,
-            fecha: fecha,
-            horaInicio: DateTime(fecha.year, fecha.month, fecha.day, 15, 0),
-            horaFin: DateTime(fecha.year, fecha.month, fecha.day, 16, 0),
-          );
-        }
-      }
-
-      print('Horarios de ejemplo creados exitosamente');
-    } catch (e) {
-      print('Error poblando horarios ejemplo: $e');
-    }
-  }
-
-  // ========== MÉTODOS DE LIMPIEZA (para desarrollo) ==========
-
-  // Limpiar todas las citas (solo para desarrollo)
-  Future<void> limpiarTodasLasCitas() async {
-    try {
-      final citas = await _firestore.collection('citas').get();
-      for (final doc in citas.docs) {
-        await doc.reference.delete();
-      }
-      print('Todas las citas eliminadas');
-    } catch (e) {
-      print('Error limpiando citas: $e');
-    }
-  }
-
-  // Restablecer horarios disponibles (solo para desarrollo)
-  Future<void> restablecerHorariosDisponibles() async {
-    try {
-      final horarios = await _firestore
-          .collection('disponibilidad_medicos')
-          .get();
-      for (final doc in horarios.docs) {
-        await doc.reference.update({'esta_disponible': true});
-      }
-      print(' Horarios restablecidos a disponibles');
-    } catch (e) {
-      print('Error restableciendo horarios: $e');
     }
   }
 }

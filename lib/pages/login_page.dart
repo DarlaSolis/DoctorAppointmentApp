@@ -5,6 +5,16 @@ import '../app_colors.dart';
 import '../routes.dart';
 import '../firebase_service.dart';
 
+/**
+ * Página de Login/Registro - Maneja la autenticación de usuarios
+ * 
+ * Esta página permite a los usuarios:
+ * - Iniciar sesión con email y contraseña
+ * - Registrarse creando una nueva cuenta
+ * - Recuperar contraseña (a través de la página correspondiente)
+ * 
+ * Incluye animaciones suaves y validación de formularios.
+ */
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -14,16 +24,22 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage>
     with SingleTickerProviderStateMixin {
+  // Controladores para los campos de texto
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+
+  // Servicios de Firebase
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final _firebaseService = FirebaseService();
 
-  bool _loading = false;
-  bool _obscureText = true;
-  bool _isLogin = true;
-  final TextEditingController _nameCtrl = TextEditingController();
+  // Estados de la UI
+  bool _loading = false; // Indicador de carga durante login/registro
+  bool _obscureText = true; // Mostrar/ocultar contraseña
+  bool _isLogin = true; // Alternar entre login y registro
+
+  // Animaciones
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _slideAnimation;
@@ -31,24 +47,29 @@ class _LoginPageState extends State<LoginPage>
   @override
   void initState() {
     super.initState();
+    // Configurar animaciones de entrada
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
 
+    // Animación de fade in
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
 
+    // Animación de deslizamiento desde abajo
     _slideAnimation = Tween<double>(begin: 50.0, end: 0.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
 
+    // Iniciar animaciones
     _animationController.forward();
   }
 
   @override
   void dispose() {
+    // Limpiar controladores para evitar memory leaks
     _animationController.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
@@ -56,6 +77,13 @@ class _LoginPageState extends State<LoginPage>
     super.dispose();
   }
 
+  /**
+   * Maneja el proceso de inicio de sesión
+   * - Valida el formulario
+   * - Autentica con Firebase Auth
+   * - Navega a la página principal si es exitoso
+   * - Muestra errores si falla
+   */
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -72,6 +100,7 @@ class _LoginPageState extends State<LoginPage>
     } catch (e) {
       String errorMessage = 'Error al iniciar sesión';
 
+      // Manejar errores específicos de Firebase Auth
       if (e.toString().contains('user-not-found')) {
         errorMessage = 'Usuario no existe';
       } else if (e.toString().contains('wrong-password')) {
@@ -88,6 +117,13 @@ class _LoginPageState extends State<LoginPage>
     }
   }
 
+  /**
+   * Maneja el proceso de registro de nuevo usuario
+   * - Valida el formulario
+   * - Crea cuenta en Firebase Auth
+   * - Guarda información adicional en Firestore
+   * - Navega a la página principal si es exitoso
+   */
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -100,7 +136,7 @@ class _LoginPageState extends State<LoginPage>
             password: _passCtrl.text.trim(),
           );
 
-      // GUARDAR USUARIO EN FIRESTORE
+      // GUARDAR USUARIO EN FIRESTORE con información adicional
       await _firebaseService.guardarUsuario(
         uid: userCredential.user!.uid,
         nombre: _nameCtrl.text.trim(),
@@ -112,6 +148,7 @@ class _LoginPageState extends State<LoginPage>
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'Error al registrarse';
 
+      // Manejar errores específicos de registro
       if (e.code == 'email-already-in-use') {
         errorMessage = 'El correo ya está en uso';
       } else if (e.code == 'weak-password') {
@@ -132,6 +169,10 @@ class _LoginPageState extends State<LoginPage>
     }
   }
 
+  /**
+   * Muestra un mensaje de error en forma de Snackbar
+   * @param message Mensaje de error a mostrar
+   */
   void _showErrorSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -149,10 +190,17 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+   * Alterna entre mostrar y ocultar la contraseña
+   */
   void _togglePasswordVisibility() {
     setState(() => _obscureText = !_obscureText);
   }
 
+  /**
+   * Cambia entre modo Login y Registro
+   * También limpia el formulario al cambiar
+   */
   void _toggleLoginRegister() {
     setState(() {
       _isLogin = !_isLogin;
@@ -180,9 +228,9 @@ class _LoginPageState extends State<LoginPage>
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                _buildAnimatedLogo(),
+                _buildAnimatedLogo(), // Logo con animación
                 const SizedBox(height: 30),
-                _buildAuthCard(),
+                _buildAuthCard(), // Tarjeta de autenticación
               ],
             ),
           ),
@@ -191,6 +239,10 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+   * Construye el logo animado de la aplicación
+   * Usa CachedNetworkImage para carga eficiente de imagen
+   */
   Widget _buildAnimatedLogo() {
     return Container(
       width: 140,
@@ -237,6 +289,10 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+   * Construye la tarjeta principal de autenticación
+   * Contiene el formulario dinámico (login/registro)
+   */
   Widget _buildAuthCard() {
     return Container(
       decoration: BoxDecoration(
@@ -252,6 +308,7 @@ class _LoginPageState extends State<LoginPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Título con gradiente
               Text(
                 'Citas Médicas',
                 style: TextStyle(
@@ -270,22 +327,26 @@ class _LoginPageState extends State<LoginPage>
               ),
               const SizedBox(height: 32),
 
+              // Campo de nombre solo visible en registro
               if (!_isLogin) ...[_buildNameField(), const SizedBox(height: 20)],
 
+              // Campos comunes
               _buildEmailField(),
               const SizedBox(height: 20),
-
               _buildPasswordField(),
               const SizedBox(height: 20),
 
+              // Olvidó contraseña solo en login
               if (_isLogin) ...[
                 _buildForgotPassword(),
                 const SizedBox(height: 25),
               ],
 
+              // Botón de acción principal
               _buildAuthButton(),
               const SizedBox(height: 20),
 
+              // Alternar entre login y registro
               _buildToggleAuth(),
             ],
           ),
@@ -294,6 +355,9 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+   * Campo de texto para nombre completo (solo en registro)
+   */
   Widget _buildNameField() {
     return TextFormField(
       controller: _nameCtrl,
@@ -326,6 +390,9 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+   * Campo de texto para email con validación
+   */
   Widget _buildEmailField() {
     return TextFormField(
       controller: _emailCtrl,
@@ -358,6 +425,9 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+   * Campo de texto para contraseña con toggle de visibilidad
+   */
   Widget _buildPasswordField() {
     return TextFormField(
       controller: _passCtrl,
@@ -397,6 +467,9 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+   * Enlace para recuperar contraseña
+   */
   Widget _buildForgotPassword() {
     return Align(
       alignment: Alignment.centerRight,
@@ -411,6 +484,10 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+   * Botón principal de autenticación (Login/Registro)
+   * Muestra loading durante el proceso
+   */
   Widget _buildAuthButton() {
     return Container(
       width: double.infinity,
@@ -461,6 +538,9 @@ class _LoginPageState extends State<LoginPage>
     );
   }
 
+  /**
+  //Enlace para alternar entre Login y Registro
+   */
   Widget _buildToggleAuth() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,

@@ -3,6 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../app_colors.dart';
 import '../firebase_service.dart';
 
+/**
+ * Página de Edición de Perfil - Permite a los usuarios gestionar su información personal
+ * 
+ * Esta página proporciona un formulario completo para:
+ * - Ver y editar información personal del usuario
+ * - Actualizar datos demográficos y de contacto
+ * - Gestionar información médica relevante
+ * - Sincronizar cambios con Firebase Firestore
+ */
 class ProfileEditPage extends StatefulWidget {
   const ProfileEditPage({super.key});
 
@@ -11,31 +20,41 @@ class ProfileEditPage extends StatefulWidget {
 }
 
 class _ProfileEditPageState extends State<ProfileEditPage> {
+  // Controladores y servicios
   final _formKey = GlobalKey<FormState>();
   final _auth = FirebaseAuth.instance;
   final _firebaseService = FirebaseService();
 
+  // Controladores para cada campo del formulario
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
   final TextEditingController _birthPlaceController = TextEditingController();
   final TextEditingController _conditionsController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
 
-  bool _isLoading = false;
-  bool _isSaving = false;
+  // Estados de la UI
+  bool _isLoading = false; // Indicador de carga inicial de datos
+  bool _isSaving = false; // Indicador de guardado de cambios
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _loadUserData(); // Cargar datos existentes al iniciar
   }
 
+  /**
+   * Carga los datos del usuario desde Firebase Firestore
+   * - Obtiene información del usuario autenticado
+   * - Rellena los campos del formulario con datos existentes
+   * - Maneja errores de forma segura
+   */
   Future<void> _loadUserData() async {
     setState(() => _isLoading = true);
 
     final user = _auth.currentUser;
     if (user != null) {
       try {
+        // Obtener datos adicionales del usuario desde Firestore
         final userData = await _firebaseService.obtenerUsuario(user.uid);
 
         if (userData != null) {
@@ -49,7 +68,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         }
       } catch (e) {
         print('Error cargando datos del usuario: $e');
-        // Si hay error, al menos mostrar el email del usuario
+        // Fallback: usar información básica de Firebase Auth
         _nameController.text =
             user.displayName ?? user.email?.split('@').first ?? '';
       }
@@ -58,7 +77,15 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     setState(() => _isLoading = false);
   }
 
+  /**
+   * Maneja el proceso de guardado del perfil
+   * - Valida el formulario
+   * - Actualiza la información en Firestore
+   * - Muestra feedback al usuario
+   * - Navega de regreso tras éxito
+   */
   Future<void> _saveProfile() async {
+    // Validar formulario antes de proceder
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
@@ -75,11 +102,14 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         nombre: _nameController.text.trim(),
         email: user.email!,
         telefono: _phoneController.text.trim(),
-        edad: int.tryParse(_ageController.text.trim()),
+        edad: int.tryParse(
+          _ageController.text.trim(),
+        ), // Conversión segura a int
         lugarNacimiento: _birthPlaceController.text.trim(),
         padecimientos: _conditionsController.text.trim(),
       );
 
+      // Mostrar mensaje de éxito
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -98,9 +128,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
           ),
         );
 
-        // Esperar un momento antes de regresar
+        // Esperar un momento para que el usuario vea el mensaje
         await Future.delayed(const Duration(milliseconds: 1500));
-        if (mounted) Navigator.pop(context);
+        if (mounted) Navigator.pop(context); // Regresar a página anterior
       }
     } catch (e) {
       print('Error guardando perfil: $e');
@@ -123,10 +153,15 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         );
       }
     } finally {
+      // Siempre detener el indicador de guardado
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
+  /**
+   * Limpia todos los campos del formulario
+   * Útil para restablecer o empezar desde cero
+   */
   void _clearForm() {
     _formKey.currentState?.reset();
     setState(() {
@@ -149,15 +184,18 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context), // Navegación hacia atrás
         ),
         actions: [
+          // Mostrar acciones solo cuando no está cargando
           if (!_isLoading) ...[
+            // Botón para limpiar formulario
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _clearForm,
               tooltip: 'Limpiar formulario',
             ),
+            // Botón para guardar cambios
             IconButton(
               icon: const Icon(Icons.save),
               onPressed: _isSaving ? null : _saveProfile,
@@ -184,27 +222,27 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      // Header del perfil
+                      // Header con información del perfil
                       _buildProfileHeader(),
                       const SizedBox(height: 24),
 
                       // Campos del formulario
-                      _buildNameField(),
+                      _buildNameField(), // Nombre completo
                       const SizedBox(height: 16),
 
-                      _buildAgeField(),
+                      _buildAgeField(), // Edad
                       const SizedBox(height: 16),
 
-                      _buildPhoneField(),
+                      _buildPhoneField(), // Teléfono
                       const SizedBox(height: 16),
 
-                      _buildBirthPlaceField(),
+                      _buildBirthPlaceField(), // Lugar de nacimiento
                       const SizedBox(height: 16),
 
-                      _buildConditionsField(),
+                      _buildConditionsField(), // Condiciones médicas
                       const SizedBox(height: 30),
 
-                      // Botones de acción
+                      // Botones de acción principal
                       _buildActionButtons(),
                     ],
                   ),
@@ -214,6 +252,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
+  /**
+   * Construye el header del perfil con información del usuario
+   * Muestra avatar, nombre, email e ID abreviado
+   */
   Widget _buildProfileHeader() {
     final user = _auth.currentUser;
     return Container(
@@ -227,6 +269,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         padding: const EdgeInsets.all(20),
         child: Row(
           children: [
+            // Avatar del usuario
             Container(
               width: 70,
               height: 70,
@@ -238,10 +281,12 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
               child: const Icon(Icons.person, color: Colors.white, size: 35),
             ),
             const SizedBox(width: 16),
+            // Información del usuario
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Nombre (del formulario o datos existentes)
                   Text(
                     _nameController.text.isEmpty
                         ? user?.displayName ??
@@ -257,6 +302,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
+                  // Email del usuario
                   Text(
                     user?.email ?? 'No email',
                     style: TextStyle(fontSize: 14, color: AppColors.textLight),
@@ -264,6 +310,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
+                  // ID abreviado del usuario (seguridad)
                   Text(
                     'ID: ${user?.uid.substring(0, 8)}...',
                     style: TextStyle(
@@ -280,6 +327,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
+  /**
+   * Construye el campo de nombre completo
+   * Campo requerido con validaciones de longitud
+   */
   Widget _buildNameField() {
     return TextFormField(
       controller: _nameController,
@@ -316,6 +367,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
+  /**
+   * Construye el campo de edad
+   * Campo opcional con validación de rango
+   */
   Widget _buildAgeField() {
     return TextFormField(
       controller: _ageController,
@@ -356,6 +411,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
+  /**
+   * Construye el campo de teléfono
+   * Campo opcional sin validación estricta
+   */
   Widget _buildPhoneField() {
     return TextFormField(
       controller: _phoneController,
@@ -384,6 +443,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
+  /**
+   * Construye el campo de lugar de nacimiento
+   * Campo opcional para información demográfica
+   */
   Widget _buildBirthPlaceField() {
     return TextFormField(
       controller: _birthPlaceController,
@@ -411,17 +474,21 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
+  /**
+   * Construye el campo de condiciones médicas
+   * Campo multilínea para información de salud
+   */
   Widget _buildConditionsField() {
     return TextFormField(
       controller: _conditionsController,
-      maxLines: 3,
+      maxLines: 3, // Campo expandible para texto largo
       style: const TextStyle(color: AppColors.textDark),
       decoration: InputDecoration(
         labelText: 'Padecimientos o condiciones médicas',
         labelStyle: const TextStyle(color: AppColors.textLight),
         hintText:
             'Describe cualquier condición médica, alergia o padecimiento...',
-        alignLabelWithHint: true,
+        alignLabelWithHint: true, // Mejor alineación para campos multilínea
         prefixIcon: Icon(
           Icons.medical_services,
           color: AppColors.primaryPurple,
@@ -444,10 +511,14 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
+  /**
+   * Construye los botones de acción principales
+   * Diseño responsivo con Cancelar y Guardar
+   */
   Widget _buildActionButtons() {
     return Row(
       children: [
-        // Botón Cancelar
+        // Botón Cancelar - Secundario
         Expanded(
           child: Container(
             height: 55,
@@ -475,7 +546,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         ),
         const SizedBox(width: 16),
 
-        // Botón Guardar
+        // Botón Guardar - Primario
         Expanded(
           child: Container(
             height: 55,
@@ -527,6 +598,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   @override
   void dispose() {
+    // Limpiar todos los controladores para evitar memory leaks
     _nameController.dispose();
     _ageController.dispose();
     _birthPlaceController.dispose();

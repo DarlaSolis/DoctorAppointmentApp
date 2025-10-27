@@ -4,6 +4,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../app_colors.dart';
 import '../routes.dart';
 
+/**
+ * Página de Registro de Usuario - Permite crear nuevas cuentas en la aplicación
+ * 
+ * Esta página maneja el proceso completo de registro:
+ * - Validación de formulario de email y contraseña
+ * - Creación de usuario en Firebase Authentication
+ * - Almacenamiento de datos básicos en Firestore
+ * - Navegación automática al home tras registro exitoso
+ * - Manejo de errores específicos de Firebase Auth
+ */
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
@@ -13,14 +23,18 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
+  // Controladores y servicios
   final _formKey = GlobalKey<FormState>();
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  bool _isLoading = false;
-  bool _obscureText = true;
+  // Estados de la UI
+  bool _isLoading = false; // Indicador de carga durante registro
+  bool _obscureText = true; // Control de visibilidad de contraseña
+
+  // Animaciones
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -28,38 +42,54 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void initState() {
     super.initState();
+    // Configurar animaciones de entrada
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(
+        milliseconds: 800,
+      ), // Duración media para suavidad
     );
 
+    // Animación de fade in gradual
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
 
+    // Animación de deslizamiento desde abajo
     _slideAnimation =
         Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
           CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
         );
 
+    // Iniciar animaciones automáticamente
     _animationController.forward();
   }
 
   @override
   void dispose() {
+    // Limpiar recursos para evitar memory leaks
     _animationController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
+  /**
+   * Maneja el proceso completo de registro de usuario
+   * - Valida el formulario
+   * - Crea usuario en Firebase Authentication
+   * - Guarda datos básicos en Firestore
+   * - Navega al home en caso de éxito
+   * - Maneja errores específicos de Firebase
+   */
   Future<void> _register() async {
+    // Validar formulario antes de proceder
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      // Crear usuario en Authentication
+      // Crear usuario en Firebase Authentication
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
@@ -70,15 +100,20 @@ class _ProfilePageState extends State<ProfilePage>
 
       // Guardar datos básicos en Firestore usando el UID correcto
       await _firestore.collection('usuarios').doc(user.uid).set({
-        'nombre': user.email?.split('@').first ?? 'Usuario',
+        'nombre':
+            user.email?.split('@').first ??
+            'Usuario', // Nombre por defecto del email
         'email': user.email,
-        'fecha_creacion': FieldValue.serverTimestamp(),
+        'fecha_creacion':
+            FieldValue.serverTimestamp(), // Timestamp del servidor
         'ultima_actualizacion': FieldValue.serverTimestamp(),
       });
 
+      // Navegar al home limpiando el stack de navegación
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     } on FirebaseAuthException catch (e) {
+      // Manejar errores específicos de Firebase Auth
       String message = 'Error al registrarse';
       if (e.code == 'email-already-in-use') {
         message = 'El correo ya está en uso.';
@@ -92,14 +127,20 @@ class _ProfilePageState extends State<ProfilePage>
         _showErrorSnackbar(message);
       }
     } catch (e) {
+      // Manejar errores genéricos
       if (mounted) {
         _showErrorSnackbar('Error inesperado: $e');
       }
     } finally {
+      // Siempre detener el loading indicator
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  /**
+   * Muestra un mensaje de error en forma de Snackbar
+   * @param message Mensaje de error a mostrar
+   */
   void _showErrorSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -117,6 +158,9 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /**
+   * Alterna entre mostrar y ocultar la contraseña
+   */
   void _togglePasswordVisibility() {
     setState(() => _obscureText = !_obscureText);
   }
@@ -132,7 +176,7 @@ class _ProfilePageState extends State<ProfilePage>
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context), // Navegación hacia atrás
         ),
       ),
       body: SlideTransition(
@@ -144,9 +188,9 @@ class _ProfilePageState extends State<ProfilePage>
             child: SingleChildScrollView(
               child: Column(
                 children: [
-                  _buildAnimatedIcon(),
+                  _buildAnimatedIcon(), // Ícono animado
                   const SizedBox(height: 30),
-                  _buildRegisterCard(),
+                  _buildRegisterCard(), // Tarjeta de registro
                 ],
               ),
             ),
@@ -156,6 +200,10 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /**
+   * Construye el ícono animado de registro
+   * Círculo con gradiente e ícono de "añadir persona"
+   */
   Widget _buildAnimatedIcon() {
     return Container(
       width: 100,
@@ -169,6 +217,10 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /**
+   * Construye la tarjeta principal del formulario de registro
+   * Contiene título, campos de entrada y botones de acción
+   */
   Widget _buildRegisterCard() {
     return Container(
       decoration: BoxDecoration(
@@ -184,6 +236,7 @@ class _ProfilePageState extends State<ProfilePage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Título con gradiente
               Text(
                 'Crear Cuenta',
                 style: TextStyle(
@@ -196,18 +249,25 @@ class _ProfilePageState extends State<ProfilePage>
                 ),
               ),
               const SizedBox(height: 8),
+              // Subtítulo informativo
               Text(
                 'Completa tus datos para registrarte',
                 style: TextStyle(fontSize: 16, color: AppColors.textLight),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              _buildEmailField(),
+
+              // Campos del formulario
+              _buildEmailField(), // Campo de email
               const SizedBox(height: 20),
-              _buildPasswordField(),
+              _buildPasswordField(), // Campo de contraseña
               const SizedBox(height: 30),
+
+              // Botón de registro
               _buildRegisterButton(),
               const SizedBox(height: 20),
+
+              // Sección de login para usuarios existentes
               _buildLoginSection(),
             ],
           ),
@@ -216,6 +276,10 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /**
+   * Construye el campo de entrada para el email
+   * Incluye validación de formato de email
+   */
   Widget _buildEmailField() {
     return TextFormField(
       controller: _emailController,
@@ -246,6 +310,10 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /**
+   * Construye el campo de entrada para la contraseña
+   * Incluye toggle de visibilidad y validación de longitud
+   */
   Widget _buildPasswordField() {
     return TextFormField(
       controller: _passwordController,
@@ -260,7 +328,7 @@ class _ProfilePageState extends State<ProfilePage>
             _obscureText ? Icons.visibility : Icons.visibility_off,
             color: AppColors.primaryPurple,
           ),
-          onPressed: _togglePasswordVisibility,
+          onPressed: _togglePasswordVisibility, // Toggle visibilidad
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
@@ -283,6 +351,10 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /**
+   * Construye el botón principal de registro
+   * Muestra loading indicator durante el proceso
+   */
   Widget _buildRegisterButton() {
     return Container(
       width: double.infinity,
@@ -327,6 +399,10 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
+  /**
+   * Construye la sección para usuarios que ya tienen cuenta
+   * Enlace para regresar a la página de login
+   */
   Widget _buildLoginSection() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -337,7 +413,7 @@ class _ProfilePageState extends State<ProfilePage>
         ),
         const SizedBox(width: 8),
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context), // Regresar a login
           style: TextButton.styleFrom(foregroundColor: AppColors.primaryPurple),
           child: const Text(
             'Iniciar sesión',

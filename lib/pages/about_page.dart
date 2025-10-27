@@ -1,27 +1,40 @@
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 
+/**
+ * Página "Sobre Nosotros" - Muestra información acerca de la aplicación
+ * 
+ * Esta página proporciona a los usuarios información básica sobre
+ * la aplicación de citas médicas, su propósito y funcionalidades.
+ */
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Fondo de la aplicación usando los colores definidos en la app
       backgroundColor: AppColors.background,
+
+      // Barra de aplicación personalizada
       appBar: AppBar(
         title: const Text('Sobre Nosotros'),
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.textDark,
-        elevation: 0,
+        backgroundColor: Colors.transparent, // Fondo transparente
+        foregroundColor: AppColors.textDark, // Color del texto e íconos
+        elevation: 0, // Sin sombra para un look más plano y moderno
       ),
+
+      // Cuerpo principal de la página
       body: const Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(16), // Espaciado alrededor del contenido
         child: Card(
+          // Tarjeta que contiene la información
           child: Padding(
-            padding: EdgeInsets.all(20),
+            padding: EdgeInsets.all(20), // Espaciado interno del texto
             child: Text(
+              // Descripción de la aplicación
               'Aplicación de Citas Médicas - Conectamos pacientes con profesionales de la salud.',
-              style: TextStyle(fontSize: 16),
+              style: TextStyle(fontSize: 16), // Tamaño de fuente legible
             ),
           ),
         ),

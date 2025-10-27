@@ -9,6 +9,15 @@ import 'appointment_booking_page.dart';
 import '../firebase_service.dart';
 import 'edit_appointment_page.dart';
 
+/**
+ * Página Principal (Home) de la aplicación de Citas Médicas
+ * 
+ * Esta página sirve como el dashboard principal donde los usuarios pueden:
+ * - Ver su información personal y próximas citas
+ * - Navegar entre diferentes secciones (Inicio, Mensajes, Configuración)
+ * - Agendar nuevas citas y acceder a consejos médicos
+ * - Gestionar sus citas existentes (editar, cancelar)
+ */
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -17,25 +26,35 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  // Servicios y controladores
   final _auth = FirebaseAuth.instance;
   final _firebaseService = FirebaseService();
 
+  // Estado del usuario y UI
   String? userName;
   String? userEmail;
-  int _currentIndex = 0;
+  int _currentIndex = 0; // Índice para la navegación inferior
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _loadUserData(); // Cargar datos del usuario al iniciar
   }
 
+  /**
+   * Carga los datos del usuario desde Firebase
+   * - Obtiene información del usuario autenticado
+   * - Actualiza la última sesión en Firestore
+   * - Maneja errores de forma segura
+   */
   Future<void> _loadUserData() async {
     final user = _auth.currentUser;
     if (user != null) {
       try {
+        // Obtener datos adicionales del usuario desde Firestore
         final userData = await _firebaseService.obtenerUsuario(user.uid);
         setState(() {
+          // Prioridad: Nombre de Firestore → Display Name → Email → "Usuario"
           userName =
               userData?['nombre'] ??
               user.displayName ??
@@ -44,10 +63,11 @@ class _HomePageState extends State<HomePage> {
           userEmail = user.email;
         });
 
-        // Actualizar última sesión
+        // Actualizar timestamp de última sesión
         await _firebaseService.actualizarUltimaSesion(user.uid);
       } catch (e) {
         print('Error cargando datos usuario: $e');
+        // Fallback en caso de error
         setState(() {
           userName = user.email?.split('@').first ?? 'Usuario';
           userEmail = user.email;
@@ -60,40 +80,48 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: _getCurrentPage(),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      body: _getCurrentPage(), // Contenido dinámico según pestaña
+      bottomNavigationBar: _buildBottomNavigationBar(), // Barra de navegación
     );
   }
 
+  /**
+   * Devuelve la página actual basada en el índice de navegación
+   */
   Widget _getCurrentPage() {
     switch (_currentIndex) {
       case 0:
-        return _buildHomeContent();
+        return _buildHomeContent(); // Página de inicio
       case 1:
-        return const MessagesPage();
+        return const MessagesPage(); // Página de mensajes
       case 2:
-        return const SettingsPage();
+        return const SettingsPage(); // Página de configuración
       default:
-        return _buildHomeContent();
+        return _buildHomeContent(); // Fallback a inicio
     }
   }
 
+  /**
+   * Construye el contenido principal de la página de inicio
+   * Incluye: AppBar, tarjeta de bienvenida, acciones principales,
+   * especialistas y próximas citas
+   */
   Widget _buildHomeContent() {
     return Column(
       children: [
-        _buildAppBar(),
+        _buildAppBar(), // Barra de aplicación personalizada
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                _buildWelcomeCard(),
+                _buildWelcomeCard(), // Tarjeta de bienvenida
                 const SizedBox(height: 30),
-                _buildMainActions(),
+                _buildMainActions(), // Botones de acción principales
                 const SizedBox(height: 30),
-                _buildSpecialistsSection(),
+                _buildSpecialistsSection(), // Lista de especialistas
                 const SizedBox(height: 30),
-                _buildNextAppointments(),
+                _buildNextAppointments(), // Lista de próximas citas
               ],
             ),
           ),
@@ -102,17 +130,22 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Construye la barra de aplicación personalizada
+   * Con logo, título y botón de notificaciones
+   */
   Widget _buildAppBar() {
     return Container(
       decoration: BoxDecoration(
-        gradient: AppGradients.primaryGradient,
-        boxShadow: [AppShadows.mediumShadow],
+        gradient: AppGradients.primaryGradient, // Fondo con gradiente
+        boxShadow: [AppShadows.mediumShadow], // Sombra para profundidad
       ),
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
+              // Logo de la aplicación
               Container(
                 width: 40,
                 height: 40,
@@ -128,6 +161,7 @@ class _HomePageState extends State<HomePage> {
                     height: 20,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
+                      // Fallback si falla la carga de imagen
                       return const Icon(
                         Icons.medical_services,
                         size: 20,
@@ -135,6 +169,7 @@ class _HomePageState extends State<HomePage> {
                       );
                     },
                     loadingBuilder: (context, child, loadingProgress) {
+                      // Indicador de carga
                       if (loadingProgress == null) return child;
                       return const CircularProgressIndicator(
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -145,6 +180,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(width: 12),
+              // Título de la aplicación
               const Text(
                 'Citas Médicas',
                 style: TextStyle(
@@ -153,10 +189,11 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const Spacer(),
+              const Spacer(), // Espacio flexible
+              // Botón de notificaciones
               IconButton(
                 icon: const Icon(Icons.notifications_none, color: Colors.white),
-                onPressed: () {},
+                onPressed: () {}, // TODO: Implementar funcionalidad
               ),
             ],
           ),
@@ -165,6 +202,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Construye la tarjeta de bienvenida con información del usuario
+   */
   Widget _buildWelcomeCard() {
     return Container(
       decoration: BoxDecoration(
@@ -177,6 +217,7 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            // Avatar del usuario
             Container(
               width: 80,
               height: 80,
@@ -209,6 +250,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const SizedBox(height: 20),
+            // Saludo personalizado
             Text(
               '¡Hola, $userName! ¿En qué podemos ayudarte?',
               style: const TextStyle(
@@ -219,6 +261,7 @@ class _HomePageState extends State<HomePage> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
+            // Email del usuario
             Text(
               userEmail ?? '',
               style: TextStyle(fontSize: 16, color: AppColors.textLight),
@@ -230,6 +273,10 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Construye la sección de acciones principales
+   * Dos tarjetas: Agendar Cita y Consejos Médicos
+   */
   Widget _buildMainActions() {
     return Row(
       children: [
@@ -268,6 +315,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Construye una tarjeta de acción individual
+   */
   Widget _buildActionCard({
     required IconData icon,
     required String title,
@@ -286,6 +336,7 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Ícono circular
               Container(
                 width: 60,
                 height: 60,
@@ -296,6 +347,7 @@ class _HomePageState extends State<HomePage> {
                 child: Icon(icon, color: color, size: 30),
               ),
               const SizedBox(height: 12),
+              // Título de la acción
               Text(
                 title,
                 style: const TextStyle(
@@ -312,6 +364,10 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Construye la sección de especialistas médicos
+   * Lista horizontal de especialidades disponibles
+   */
   Widget _buildSpecialistsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,6 +422,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Construye una tarjeta individual de especialista
+   */
   Widget _buildSpecialistCard(String title, IconData icon, Color color) {
     return Container(
       width: 100,
@@ -377,6 +436,7 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Ícono del especialista
           Container(
             width: 50,
             height: 50,
@@ -387,6 +447,7 @@ class _HomePageState extends State<HomePage> {
             child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(height: 8),
+          // Nombre de la especialidad
           Text(
             title,
             style: const TextStyle(
@@ -401,14 +462,17 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // === SECCIÓN CORREGIDA - PRÓXIMAS CITAS ===
+  /**
+   * Construye la sección de próximas citas
+   * Usa StreamBuilder para mostrar citas en tiempo real
+   */
   Widget _buildNextAppointments() {
     final user = _auth.currentUser;
     if (user == null) {
       return _buildMessageCard('Usuario no autenticado');
     }
 
-    print('🔄 CONSTRUYENDO _buildNextAppointments para: ${user.uid}'); // DEBUG
+    print('🔄 CONSTRUYENDO _buildNextAppointments para: ${user.uid}');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -422,19 +486,20 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(height: 16),
-        StreamBuilder<QuerySnapshot>(
+        // Stream que escucha cambios en las citas del usuario
+        StreamBuilder<List<DocumentSnapshot>>(
           stream: _firebaseService.obtenerCitasUsuario(user.uid),
           builder: (context, snapshot) {
-            // DEBUG MEJORADO
+            // Logs de debug para seguimiento
             print(' STREAMBUILDER - Estado: ${snapshot.connectionState}');
             print(' STREAMBUILDER - Tiene error: ${snapshot.hasError}');
             print(' STREAMBUILDER - Tiene datos: ${snapshot.hasData}');
             if (snapshot.hasData) {
               print(
-                ' STREAMBUILDER - Número de documentos: ${snapshot.data!.docs.length}',
+                ' STREAMBUILDER - Número de documentos: ${snapshot.data!.length}',
               );
-              // Mostrar IDs de las citas para verificar
-              for (final doc in snapshot.data!.docs) {
+              // Mostrar orden de las citas en consola
+              for (final doc in snapshot.data!) {
                 print('📄 Cita ID: ${doc.id} - Estado: ${doc['estado']}');
               }
             }
@@ -452,7 +517,7 @@ class _HomePageState extends State<HomePage> {
                   return _buildMessageCard('No hay datos disponibles');
                 }
 
-                final citas = snapshot.data!.docs;
+                final citas = snapshot.data!;
 
                 if (citas.isEmpty) {
                   return _buildEmptyCard();
@@ -460,22 +525,8 @@ class _HomePageState extends State<HomePage> {
 
                 return Column(
                   children: [
-                    // Indicador de última actualización
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color.fromARGB(255, 181, 224, 254),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Última actualización: ${DateTime.now().toString()}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.green,
-                        ),
-                      ),
-                    ),
                     const SizedBox(height: 8),
+                    // Lista de citas
                     ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -505,7 +556,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Widgets auxiliares para diferentes estados
+  // ========== WIDGETS AUXILIARES PARA DIFERENTES ESTADOS ==========
+
+  /**
+   * Tarjeta de carga mientras se obtienen las citas
+   */
   Widget _buildLoadingCard() {
     return Card(
       child: Padding(
@@ -521,6 +576,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Tarjeta cuando no hay citas programadas
+   */
   Widget _buildEmptyCard() {
     return Card(
       child: Padding(
@@ -544,6 +602,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Tarjeta de error cuando falla la carga de citas
+   */
   Widget _buildErrorCard(String message) {
     return Card(
       child: Padding(
@@ -567,7 +628,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
-                // Forzar rebuild
+                // Forzar rebuild al reintentar
                 setState(() {});
               },
               child: const Text('Reintentar'),
@@ -578,16 +639,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Tarjeta genérica para mensajes simples
+   */
   Widget _buildMessageCard(String message) {
     return Card(
       child: Padding(padding: const EdgeInsets.all(16), child: Text(message)),
     );
   }
 
-  // === MÉTODO _buildCitaCard CORREGIDO ===
+  // ========== CONSTRUCCIÓN DE TARJETAS DE CITA ==========
+
+  /**
+   * Construye una tarjeta individual para cada cita
+   * Muestra: Especialidad, estado, fecha, hora, motivo y acciones
+   */
   Widget _buildCitaCard(Map<String, dynamic> cita) {
     try {
-      // Manejo seguro de la fecha
+      // Manejo seguro de la fecha (Timestamp, DateTime o fallback)
       final fechaHora = cita['fecha_hora'];
       DateTime fecha;
 
@@ -596,9 +665,10 @@ class _HomePageState extends State<HomePage> {
       } else if (fechaHora is DateTime) {
         fecha = fechaHora;
       } else {
-        fecha = DateTime.now();
+        fecha = DateTime.now(); // Fallback
       }
 
+      // Extraer datos de la cita con valores por defecto
       final citaId = cita['id'] ?? 'unknown';
       final estado = cita['estado'] ?? 'pendiente';
       final especialidad = cita['especialidad'] ?? 'Sin especialidad';
@@ -611,6 +681,7 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Fila superior: Especialidad y estado
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -621,6 +692,7 @@ class _HomePageState extends State<HomePage> {
                       fontSize: 16,
                     ),
                   ),
+                  // Badge del estado de la cita
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -642,6 +714,7 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
               const SizedBox(height: 8),
+              // Información de fecha y hora
               Text('Fecha: ${fecha.day}/${fecha.month}/${fecha.year}'),
               Text(
                 'Hora: ${fecha.hour}:${fecha.minute.toString().padLeft(2, '0')}',
@@ -649,6 +722,7 @@ class _HomePageState extends State<HomePage> {
               Text('Motivo: $motivo'),
               const SizedBox(height: 12),
 
+              // Botones de acción solo para citas pendientes
               if (estado == 'pendiente')
                 Row(
                   children: [
@@ -693,19 +767,25 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /**
+   * Devuelve el color correspondiente al estado de la cita
+   */
   Color _getColorEstado(String estado) {
     switch (estado) {
       case 'pendiente':
-        return Colors.orange;
+        return Colors.orange; // Naranja para pendientes
       case 'confirmada':
-        return Colors.green;
+        return Colors.green; // Verde para confirmadas
       case 'cancelada':
-        return Colors.red;
+        return Colors.red; // Rojo para canceladas
       default:
-        return Colors.grey;
+        return Colors.grey; // Gris para estados desconocidos
     }
   }
 
+  /**
+   * Navega a la página de edición de cita
+   */
   Future<void> _editarCita(String citaId, Map<String, dynamic> citaData) async {
     await Navigator.push(
       context,
@@ -715,6 +795,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /**
+   * Muestra diálogo de confirmación y cancela la cita
+   */
   Future<void> _cancelarCita(String citaId) async {
     final result = await showDialog<bool>(
       context: context,
@@ -755,6 +838,10 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /**
+   * Construye la barra de navegación inferior
+   * Permite cambiar entre Inicio, Mensajes y Configuración
+   */
   Widget _buildBottomNavigationBar() {
     return Container(
       decoration: BoxDecoration(

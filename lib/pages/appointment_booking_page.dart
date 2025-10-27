@@ -3,6 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../app_colors.dart';
 import '../firebase_service.dart';
 
+/**
+ * Página de Agendamiento de Citas - Permite a los usuarios programar nuevas citas médicas
+ * 
+ * Esta página proporciona un formulario completo para:
+ * - Seleccionar especialidad médica
+ * - Elegir fecha y hora de la cita
+ * - Describir el motivo de la consulta
+ * - Enviar la cita al sistema con validaciones
+ */
 class AppointmentBookingPage extends StatefulWidget {
   const AppointmentBookingPage({super.key});
 
@@ -11,14 +20,18 @@ class AppointmentBookingPage extends StatefulWidget {
 }
 
 class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
+  // Servicios y controladores
   final _firebaseService = FirebaseService();
   final _formKey = GlobalKey<FormState>();
-
   final TextEditingController _motivoController = TextEditingController();
-  DateTime? _selectedDate;
-  TimeOfDay? _selectedTime;
-  String? _selectedEspecialidad;
 
+  // Estado del formulario
+  DateTime? _selectedDate; // Fecha seleccionada para la cita
+  TimeOfDay? _selectedTime; // Hora seleccionada para la cita
+  String? _selectedEspecialidad; // Especialidad médica seleccionada
+  bool _isLoading = false; // Indicador de carga durante el agendamiento
+
+  // Lista de especialidades médicas disponibles
   final List<String> _especialidades = [
     'Cardiólogo',
     'Pediatra',
@@ -27,10 +40,19 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
     'Ginecólogo',
   ];
 
-  bool _isLoading = false;
-
+  /**
+   * Maneja el proceso completo de agendamiento de cita
+   * - Valida el formulario
+   * - Verifica autenticación del usuario
+   * - Combina fecha y hora seleccionadas
+   * - Llama al servicio para crear la cita
+   * - Maneja errores y muestra feedback al usuario
+   */
   Future<void> _agendarCita() async {
+    // Validar formulario antes de proceder
     if (!_formKey.currentState!.validate()) return;
+
+    // Verificar que todos los campos requeridos estén completos
     if (_selectedDate == null ||
         _selectedTime == null ||
         _selectedEspecialidad == null) {
@@ -40,6 +62,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
 
     setState(() => _isLoading = true);
 
+    // Verificar que el usuario esté autenticado
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       _showErrorSnackbar('Usuario no autenticado');
@@ -48,6 +71,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
     }
 
     try {
+      // Combinar fecha y hora seleccionadas en un solo objeto DateTime
       final fechaHora = DateTime(
         _selectedDate!.year,
         _selectedDate!.month,
@@ -56,7 +80,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
         _selectedTime!.minute,
       );
 
-    
+      // Llamar al servicio para agendar la cita
       await _firebaseService.agendarCita(
         pacienteId: user.uid,
         fechaHora: fechaHora,
@@ -64,7 +88,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
         especialidad: _selectedEspecialidad!,
       );
 
-   
+      // Mostrar mensaje de éxito y limpiar formulario
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -83,7 +107,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
           ),
         );
 
-        // Limpiar formulario
+        // Limpiar formulario después del éxito
         _formKey.currentState?.reset();
         setState(() {
           _selectedDate = null;
@@ -95,9 +119,9 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
     } catch (e) {
       print('Error agendando cita: $e');
 
-      // VERIFICAR SI LA CITA SE CREÓ A PESAR DEL ERROR
+      // Manejo especial para errores de permisos de Firestore
       if (e.toString().contains('permission-denied')) {
-        // Si es solo error de permisos pero la cita se creó, mostrar éxito
+        // Si es solo error de permisos pero la cita se creó, mostrar éxito condicional
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -116,7 +140,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
             ),
           );
 
-          // Limpiar formulario
+          // Limpiar formulario incluso con error de permisos
           _formKey.currentState?.reset();
           setState(() {
             _selectedDate = null;
@@ -126,16 +150,21 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
           });
         }
       } else {
-        // Si es otro error, mostrar mensaje de error real
+        // Para otros errores, mostrar mensaje de error real
         if (mounted) {
           _showErrorSnackbar('Error al agendar cita: $e');
         }
       }
     } finally {
+      // Siempre detener el loading indicator
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  /**
+   * Muestra un mensaje de error en forma de Snackbar
+   * @param message Mensaje de error a mostrar
+   */
   void _showErrorSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -153,25 +182,35 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
     );
   }
 
+  /**
+   * Abre el selector de fecha nativo
+   * Limita la selección a los próximos 30 días desde hoy
+   */
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
+      initialDate: DateTime.now(), // Fecha inicial: hoy
+      firstDate: DateTime.now(), // No permite fechas pasadas
+      lastDate: DateTime.now().add(
+        const Duration(days: 30),
+      ), // Máximo 30 días en el futuro
     );
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        _selectedTime = null; 
+        _selectedTime = null; // Resetear hora al cambiar fecha
       });
     }
   }
 
+  /**
+   * Abre el selector de hora nativo
+   * Solo disponible después de seleccionar una fecha
+   */
   Future<void> _selectTime() async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.now(),
+      initialTime: TimeOfDay.now(), // Hora inicial: hora actual
     );
     if (picked != null) {
       setState(() {
@@ -191,7 +230,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context), // Navegación hacia atrás
         ),
       ),
       body: Padding(
@@ -201,15 +240,15 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                _buildEspecialidadSelector(),
+                _buildEspecialidadSelector(), // Selector de especialidad
                 const SizedBox(height: 20),
-                _buildDateSelector(),
+                _buildDateSelector(), // Selector de fecha
                 const SizedBox(height: 20),
-                _buildTimeSelector(),
+                _buildTimeSelector(), // Selector de hora
                 const SizedBox(height: 20),
-                _buildMotivoField(),
+                _buildMotivoField(), // Campo de motivo
                 const SizedBox(height: 30),
-                _buildAgendarButton(),
+                _buildAgendarButton(), // Botón de agendar
               ],
             ),
           ),
@@ -218,6 +257,10 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
     );
   }
 
+  /**
+   * Construye el selector de especialidad médica
+   * Dropdown con validación de campo requerido
+   */
   Widget _buildEspecialidadSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,6 +316,10 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
     );
   }
 
+  /**
+   * Construye el selector de fecha
+   * ListTile personalizado que abre el date picker nativo
+   */
   Widget _buildDateSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,13 +352,17 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
               style: const TextStyle(color: AppColors.textDark),
             ),
             trailing: const Icon(Icons.arrow_drop_down),
-            onTap: _selectDate,
+            onTap: _selectDate, // Abrir selector de fecha
           ),
         ),
       ],
     );
   }
 
+  /**
+   * Construye el selector de hora
+   * Solo disponible después de seleccionar una fecha
+   */
   Widget _buildTimeSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,13 +391,18 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
             title: Text(
               _selectedTime == null
                   ? 'Seleccionar hora'
-                  : _selectedTime!.format(context),
+                  : _selectedTime!.format(
+                      context,
+                    ), // Formato localizado de hora
               style: const TextStyle(color: AppColors.textDark),
             ),
             trailing: const Icon(Icons.arrow_drop_down),
-            onTap: _selectedDate == null ? null : _selectTime,
+            onTap: _selectedDate == null
+                ? null
+                : _selectTime, // Solo habilitado con fecha
           ),
         ),
+        // Mensaje informativo si no hay fecha seleccionada
         if (_selectedDate == null) ...[
           const SizedBox(height: 8),
           Text(
@@ -358,6 +414,10 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
     );
   }
 
+  /**
+   * Construye el campo de texto para el motivo de la consulta
+   * Incluye validaciones de longitud mínima
+   */
   Widget _buildMotivoField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -373,7 +433,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
         const SizedBox(height: 8),
         TextFormField(
           controller: _motivoController,
-          maxLines: 3,
+          maxLines: 3, // Campo multilínea para mejor usabilidad
           style: const TextStyle(color: AppColors.textDark),
           decoration: InputDecoration(
             hintText: 'Describa el motivo de su consulta...',
@@ -409,6 +469,10 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
     );
   }
 
+  /**
+   * Construye el botón principal de agendar cita
+   * Muestra loading indicator durante el proceso
+   */
   Widget _buildAgendarButton() {
     return Container(
       width: double.infinity,
@@ -455,6 +519,7 @@ class _AppointmentBookingPageState extends State<AppointmentBookingPage> {
 
   @override
   void dispose() {
+    // Limpiar controladores para evitar memory leaks
     _motivoController.dispose();
     super.dispose();
   }
