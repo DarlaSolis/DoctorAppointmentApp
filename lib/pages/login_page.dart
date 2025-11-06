@@ -78,6 +78,41 @@ class _LoginPageState extends State<LoginPage>
   }
 
   /**
+   * NUEVO: Función para recargar/limpiar formulario
+   */
+  Future<void> _recargarFormulario() async {
+    // Simular un breve delay para la animación de refresh
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    setState(() {
+      _emailCtrl.clear();
+      _passCtrl.clear();
+      _nameCtrl.clear();
+      _obscureText = true;
+    });
+
+    // Mostrar confirmación
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.refresh, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('Formulario recargado ugu'),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
+
+  /**
    * Maneja el proceso de inicio de sesión
    * - Valida el formulario
    * - Autentica con Firebase Auth
@@ -212,19 +247,18 @@ class _LoginPageState extends State<LoginPage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: AnimatedBuilder(
-        animation: _animationController,
-        builder: (context, child) {
-          return FadeTransition(
-            opacity: _fadeAnimation,
-            child: Transform.translate(
-              offset: Offset(0, _slideAnimation.value),
-              child: child,
-            ),
-          );
-        },
-        child: Center(
+      body: GestureDetector(
+        // NUEVO: Tap para ocultar teclado
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: RefreshIndicator(
+          // NUEVO: Pull to refresh
+          onRefresh: _recargarFormulario,
+          color: AppColors.primaryBlue,
+          backgroundColor: Colors.white,
+          displacement: 40,
+          strokeWidth: 3,
           child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
@@ -242,48 +276,69 @@ class _LoginPageState extends State<LoginPage>
   /**
    * Construye el logo animado de la aplicación
    * Usa CachedNetworkImage para carga eficiente de imagen
+   * NUEVO: Agregado GestureDetector para doble tap
    */
   Widget _buildAnimatedLogo() {
-    return Container(
-      width: 140,
-      height: 140,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: [AppShadows.mediumShadow],
-        border: Border.all(
-          color: AppColors.primaryBlue.withOpacity(0.3),
-          width: 2,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(70),
-        child: CachedNetworkImage(
-          imageUrl: 'https://cdn-icons-png.flaticon.com/512/3844/3844988.png',
-          placeholder: (context, url) => Container(
-            decoration: BoxDecoration(
-              gradient: AppGradients.primaryGradient,
-              shape: BoxShape.circle,
+    return GestureDetector(
+      // NUEVO: Doble tap en logo
+      onDoubleTap: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                SizedBox(width: 8),
+                Text('¡👋 Bienvenido a DoctorAppointmentApp!'),
+              ],
             ),
-            child: const Center(
-              child: CircularProgressIndicator(
-                color: Colors.white,
-                strokeWidth: 2,
+            backgroundColor: AppColors.warning,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      },
+      child: Container(
+        width: 140,
+        height: 140,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [AppShadows.mediumShadow],
+          border: Border.all(
+            color: AppColors.primaryBlue.withOpacity(0.3),
+            width: 2,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(70),
+          child: CachedNetworkImage(
+            imageUrl: 'https://cdn-icons-png.flaticon.com/512/3844/3844988.png',
+            placeholder: (context, url) => Container(
+              decoration: BoxDecoration(
+                gradient: AppGradients.primaryGradient,
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
               ),
             ),
-          ),
-          errorWidget: (context, url, error) => Container(
-            decoration: BoxDecoration(
-              gradient: AppGradients.primaryGradient,
-              shape: BoxShape.circle,
+            errorWidget: (context, url, error) => Container(
+              decoration: BoxDecoration(
+                gradient: AppGradients.primaryGradient,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.medical_services,
+                size: 50,
+                color: Colors.white,
+              ),
             ),
-            child: const Icon(
-              Icons.medical_services,
-              size: 50,
-              color: Colors.white,
-            ),
+            fit: BoxFit.cover,
           ),
-          fit: BoxFit.cover,
         ),
       ),
     );
@@ -539,7 +594,7 @@ class _LoginPageState extends State<LoginPage>
   }
 
   /**
-  //Enlace para alternar entre Login y Registro
+   * Enlace para alternar entre Login y Registro
    */
   Widget _buildToggleAuth() {
     return Row(
