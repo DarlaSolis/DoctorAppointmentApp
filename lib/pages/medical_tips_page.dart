@@ -22,8 +22,17 @@ class MedicalTipsPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Consejos Médicos'),
         backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.textDark,
         elevation: 0,
+        titleTextStyle: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: AppColors.primaryPurple,
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          color: Color.fromARGB(255, 200, 162, 200),
+          onPressed: () => Navigator.pop(context), // Navegación hacia atrás
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

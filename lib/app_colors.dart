@@ -6,6 +6,7 @@ class AppColors {
   static const Color accentBlue = Color(0xFFB6D0E2);
   static const Color accentPurple = Color(0xFFD8BFD8);
   static const Color background = Color(0xFFF8F9FF);
+  static const Color backgroundBar = Color.fromARGB(255, 180, 173, 186);
   static const Color textDark = Color(0xFF333333);
   static const Color textLight = Color(0xFF666666);
   static const Color success = Color(0xFF4CAF50);

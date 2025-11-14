@@ -12,6 +12,7 @@ import '../firebase_service.dart';
  * - Iniciar sesión con email y contraseña
  * - Registrarse creando una nueva cuenta
  * - Recuperar contraseña (a través de la página correspondiente)
+ * - Seleccionar rol (Paciente o Médico) al registrarse
  * 
  * Incluye animaciones suaves y validación de formularios.
  */
@@ -29,6 +30,9 @@ class _LoginPageState extends State<LoginPage>
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
+
+  String _selectedRol = 'paciente';
+  final List<String> _roles = ['paciente', 'medico'];
 
   // Servicios de Firebase
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -78,7 +82,7 @@ class _LoginPageState extends State<LoginPage>
   }
 
   /**
-   * NUEVO: Función para recargar/limpiar formulario
+   * Función para recargar/limpiar formulario
    */
   Future<void> _recargarFormulario() async {
     // Simular un breve delay para la animación de refresh
@@ -89,17 +93,18 @@ class _LoginPageState extends State<LoginPage>
       _passCtrl.clear();
       _nameCtrl.clear();
       _obscureText = true;
+      _selectedRol = 'paciente';
     });
 
     // Mostrar confirmación
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+          content: const Row(
             children: [
               Icon(Icons.refresh, color: Colors.white, size: 20),
               SizedBox(width: 8),
-              Text('Formulario recargado ugu'),
+              Text('Formulario recargado'),
             ],
           ),
           backgroundColor: AppColors.success,
@@ -113,11 +118,7 @@ class _LoginPageState extends State<LoginPage>
   }
 
   /**
-   * Maneja el proceso de inicio de sesión
-   * - Valida el formulario
-   * - Autentica con Firebase Auth
-   * - Navega a la página principal si es exitoso
-   * - Muestra errores si falla
+   * Maneja el proceso de inicio de sesión CON REDIRECCIÓN POR ROL
    */
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
@@ -131,7 +132,16 @@ class _LoginPageState extends State<LoginPage>
       );
 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, Routes.home);
+
+      final user = _auth.currentUser;
+      if (user != null) {
+        final rol = await _firebaseService.obtenerRolUsuario(user.uid);
+        if (rol == 'medico') {
+          Navigator.pushReplacementNamed(context, Routes.home);
+        } else {
+          Navigator.pushReplacementNamed(context, Routes.home);
+        }
+      }
     } catch (e) {
       String errorMessage = 'Error al iniciar sesión';
 
@@ -153,11 +163,7 @@ class _LoginPageState extends State<LoginPage>
   }
 
   /**
-   * Maneja el proceso de registro de nuevo usuario
-   * - Valida el formulario
-   * - Crea cuenta en Firebase Auth
-   * - Guarda información adicional en Firestore
-   * - Navega a la página principal si es exitoso
+   * Maneja el proceso de registro de nuevo usuario CON ROL
    */
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
@@ -171,15 +177,20 @@ class _LoginPageState extends State<LoginPage>
             password: _passCtrl.text.trim(),
           );
 
-      // GUARDAR USUARIO EN FIRESTORE con información adicional
       await _firebaseService.guardarUsuario(
         uid: userCredential.user!.uid,
         nombre: _nameCtrl.text.trim(),
         email: _emailCtrl.text.trim(),
+        rol: _selectedRol,
       );
 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, Routes.home);
+
+      if (_selectedRol == 'medico') {
+        Navigator.pushReplacementNamed(context, Routes.dashboard);
+      } else {
+        Navigator.pushReplacementNamed(context, Routes.home);
+      }
     } on FirebaseAuthException catch (e) {
       String errorMessage = 'Error al registrarse';
 
@@ -240,6 +251,7 @@ class _LoginPageState extends State<LoginPage>
     setState(() {
       _isLogin = !_isLogin;
       _formKey.currentState?.reset();
+      _selectedRol = 'paciente'; // ✅ Resetear rol al cambiar
     });
   }
 
@@ -248,10 +260,8 @@ class _LoginPageState extends State<LoginPage>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: GestureDetector(
-        // NUEVO: Tap para ocultar teclado
         onTap: () => FocusScope.of(context).unfocus(),
         child: RefreshIndicator(
-          // NUEVO: Pull to refresh
           onRefresh: _recargarFormulario,
           color: AppColors.primaryBlue,
           backgroundColor: Colors.white,
@@ -276,15 +286,13 @@ class _LoginPageState extends State<LoginPage>
   /**
    * Construye el logo animado de la aplicación
    * Usa CachedNetworkImage para carga eficiente de imagen
-   * NUEVO: Agregado GestureDetector para doble tap
    */
   Widget _buildAnimatedLogo() {
     return GestureDetector(
-      // NUEVO: Doble tap en logo
       onDoubleTap: () {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
+            content: const Row(
               children: [
                 SizedBox(width: 8),
                 Text('¡👋 Bienvenido a DoctorAppointmentApp!'),
@@ -346,64 +354,84 @@ class _LoginPageState extends State<LoginPage>
 
   /**
    * Construye la tarjeta principal de autenticación
-   * Contiene el formulario dinámico (login/registro)
+   * Contiene el formulario dinámico (login/registro) CON SELECTOR DE ROL
    */
   Widget _buildAuthCard() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: AppGradients.cardGradient,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [AppShadows.softShadow],
-        border: Border.all(color: Colors.white.withOpacity(0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Título con gradiente
-              Text(
-                'Citas Médicas',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  foreground: Paint()
-                    ..shader = AppGradients.primaryGradient.createShader(
-                      const Rect.fromLTWH(0, 0, 200, 70),
-                    ),
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _fadeAnimation.value,
+          child: Transform.translate(
+            offset: Offset(0, _slideAnimation.value),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: AppGradients.cardGradient,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [AppShadows.softShadow],
+          border: Border.all(color: Colors.white.withOpacity(0.5)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Título con gradiente
+                Text(
+                  'Citas Médicas',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    foreground: Paint()
+                      ..shader = AppGradients.primaryGradient.createShader(
+                        const Rect.fromLTWH(0, 0, 200, 70),
+                      ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _isLogin ? 'Inicia sesión en tu cuenta' : 'Crea tu cuenta',
-                style: TextStyle(fontSize: 16, color: AppColors.textLight),
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 8),
+                Text(
+                  _isLogin ? 'Inicia sesión en tu cuenta' : 'Crea tu cuenta',
+                  style: TextStyle(fontSize: 16, color: AppColors.textLight),
+                ),
+                const SizedBox(height: 32),
 
-              // Campo de nombre solo visible en registro
-              if (!_isLogin) ...[_buildNameField(), const SizedBox(height: 20)],
+                // Campo de nombre solo visible en registro
+                if (!_isLogin) ...[
+                  _buildNameField(),
+                  const SizedBox(height: 20),
+                ],
 
-              // Campos comunes
-              _buildEmailField(),
-              const SizedBox(height: 20),
-              _buildPasswordField(),
-              const SizedBox(height: 20),
+                if (!_isLogin) ...[
+                  _buildRolSelector(),
+                  const SizedBox(height: 20),
+                ],
 
-              // Olvidó contraseña solo en login
-              if (_isLogin) ...[
-                _buildForgotPassword(),
-                const SizedBox(height: 25),
+                // Campos comunes
+                _buildEmailField(),
+                const SizedBox(height: 20),
+                _buildPasswordField(),
+                const SizedBox(height: 20),
+
+                // Olvidó contraseña solo en login
+                if (_isLogin) ...[
+                  _buildForgotPassword(),
+                  const SizedBox(height: 25),
+                ],
+
+                // Botón de acción principal
+                _buildAuthButton(),
+                const SizedBox(height: 20),
+
+                // Alternar entre login y registro
+                _buildToggleAuth(),
               ],
-
-              // Botón de acción principal
-              _buildAuthButton(),
-              const SizedBox(height: 20),
-
-              // Alternar entre login y registro
-              _buildToggleAuth(),
-            ],
+            ),
           ),
         ),
       ),
@@ -440,8 +468,90 @@ class _LoginPageState extends State<LoginPage>
         if (!_isLogin && (v == null || v.isEmpty)) {
           return 'Ingresa tu nombre';
         }
+        if (!_isLogin && v != null && v.length < 3) {
+          return 'El nombre debe tener al menos 3 caracteres';
+        }
         return null;
       },
+    );
+  }
+
+  /**
+   * Selector de rol para registro
+   */
+  Widget _buildRolSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Tipo de usuario *',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButtonFormField<String>(
+              value: _selectedRol,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                filled: true,
+                fillColor: Colors.transparent,
+              ),
+              icon: const Icon(
+                Icons.arrow_drop_down,
+                color: AppColors.primaryPurple,
+              ),
+              items: _roles.map((rol) {
+                return DropdownMenuItem(
+                  value: rol,
+                  child: Row(
+                    children: [
+                      Icon(
+                        rol == 'medico' ? Icons.medical_services : Icons.person,
+                        color: AppColors.primaryPurple,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        rol == 'medico' ? 'Médico' : 'Paciente',
+                        style: const TextStyle(color: AppColors.textDark),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedRol = value ?? 'paciente';
+                });
+              },
+              validator: (value) =>
+                  value == null ? 'Selecciona un tipo de usuario' : null,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _selectedRol == 'medico'
+              ? 'Accederás al panel médico con estadísticas'
+              : 'Podrás agendar citas médicas',
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.textLight,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
     );
   }
 
@@ -575,17 +685,14 @@ class _LoginPageState extends State<LoginPage>
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  Icon(_isLogin ? Icons.login : Icons.person_add, size: 20),
+                  const SizedBox(width: 8),
                   Text(
                     _isLogin ? 'Iniciar sesión' : 'Crear cuenta',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    _isLogin ? Icons.arrow_forward : Icons.person_add,
-                    size: 20,
                   ),
                 ],
               ),

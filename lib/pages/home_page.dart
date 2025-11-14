@@ -8,16 +8,9 @@ import 'medical_tips_page.dart';
 import 'appointment_booking_page.dart';
 import '../firebase_service.dart';
 import 'edit_appointment_page.dart';
+import 'dashboard_page.dart';
+import 'medico_availability_page.dart'; // ✅ AÑADIR ESTA IMPORTACIÓN
 
-/**
- * Página Principal (Home) de la aplicación de Citas Médicas
- * 
- * Esta página sirve como el dashboard principal donde los usuarios pueden:
- * - Ver su información personal y próximas citas
- * - Navegar entre diferentes secciones (Inicio, Mensajes, Configuración)
- * - Agendar nuevas citas y acceder a consejos médicos
- * - Gestionar sus citas existentes (editar, cancelar)
- */
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -26,53 +19,85 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // Servicios y controladores
   final _auth = FirebaseAuth.instance;
   final _firebaseService = FirebaseService();
 
-  // Estado del usuario y UI
   String? userName;
   String? userEmail;
-  int _currentIndex = 0; // Índice para la navegación inferior
+  String? userRole;
+  int _currentIndex = 0;
+  bool _isLoadingRole = true;
 
   @override
   void initState() {
     super.initState();
-    _loadUserData(); // Cargar datos del usuario al iniciar
+    _loadUserData();
   }
 
   /**
-   * Carga los datos del usuario desde Firebase
-   * - Obtiene información del usuario autenticado
-   * - Actualiza la última sesión en Firestore
-   * - Maneja errores de forma segura
-   */
+ * Función para recargar la página principal
+ */
+  Future<void> _recargarHomePage() async {
+    // Simular un breve delay para la animación de refresh
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    // Recargar los datos del usuario
+    await _loadUserData();
+
+    // Mostrar confirmación
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.refresh, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('Página actualizada'),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _loadUserData() async {
     final user = _auth.currentUser;
     if (user != null) {
       try {
-        // Obtener datos adicionales del usuario desde Firestore
         final userData = await _firebaseService.obtenerUsuario(user.uid);
+
         setState(() {
-          // Prioridad: Nombre de Firestore → Display Name → Email → "Usuario"
           userName =
               userData?['nombre'] ??
               user.displayName ??
               user.email?.split('@').first ??
               'Usuario';
           userEmail = user.email;
+          userRole = userData?['rol'] ?? 'paciente';
+          _isLoadingRole = false;
         });
 
-        // Actualizar timestamp de última sesión
         await _firebaseService.actualizarUltimaSesion(user.uid);
+
+        print('✅ Rol del usuario: $userRole');
       } catch (e) {
         print('Error cargando datos usuario: $e');
-        // Fallback en caso de error
         setState(() {
           userName = user.email?.split('@').first ?? 'Usuario';
           userEmail = user.email;
+          userRole = 'paciente';
+          _isLoadingRole = false;
         });
       }
+    } else {
+      setState(() {
+        _isLoadingRole = false;
+      });
     }
   }
 
@@ -80,48 +105,75 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: _getCurrentPage(), // Contenido dinámico según pestaña
-      bottomNavigationBar: _buildBottomNavigationBar(), // Barra de navegación
+      body: RefreshIndicator(
+        onRefresh: _recargarHomePage,
+        color: AppColors.primaryBlue,
+        backgroundColor: Colors.white,
+        displacement: 40,
+        strokeWidth: 3,
+        child: _getCurrentPage(),
+      ),
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
-  /**
-   * Devuelve la página actual basada en el índice de navegación
-   */
   Widget _getCurrentPage() {
     switch (_currentIndex) {
       case 0:
-        return _buildHomeContent(); // Página de inicio
+        return _buildHomeContent();
       case 1:
-        return const MessagesPage(); // Página de mensajes
+        return const MessagesPage();
       case 2:
-        return const SettingsPage(); // Página de configuración
+        return const SettingsPage();
       default:
-        return _buildHomeContent(); // Fallback a inicio
+        return _buildHomeContent();
     }
   }
 
-  /**
-   * Construye el contenido principal de la página de inicio
-   * Incluye: AppBar, tarjeta de bienvenida, acciones principales,
-   * especialistas y próximas citas
-   */
   Widget _buildHomeContent() {
+    if (_isLoadingRole) {
+      return _buildLoadingScreen();
+    }
+
+    if (userRole == 'medico') {
+      return _buildMedicoHomeContent();
+    }
+
+    return _buildPacienteHomeContent();
+  }
+
+  Widget _buildLoadingScreen() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(color: AppColors.primaryBlue),
+          const SizedBox(height: 20),
+          Text(
+            'Cargando tu perfil...',
+            style: TextStyle(fontSize: 16, color: AppColors.textLight),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMedicoHomeContent() {
     return Column(
       children: [
-        _buildAppBar(), // Barra de aplicación personalizada
+        _buildAppBar(),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                _buildWelcomeCard(), // Tarjeta de bienvenida
+                _buildWelcomeCard(),
                 const SizedBox(height: 30),
-                _buildMainActions(), // Botones de acción principales
+                _buildMedicoActions(),
                 const SizedBox(height: 30),
-                _buildSpecialistsSection(), // Lista de especialistas
+                _buildSpecialistsSection(),
                 const SizedBox(height: 30),
-                _buildNextAppointments(), // Lista de próximas citas
+                _buildNextAppointments(),
               ],
             ),
           ),
@@ -130,22 +182,421 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /**
-   * Construye la barra de aplicación personalizada
-   * Con logo, título y botón de notificaciones
-   */
+  Widget _buildPacienteHomeContent() {
+    return Column(
+      children: [
+        _buildAppBar(),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                _buildWelcomeCard(),
+                const SizedBox(height: 30),
+                _buildPacienteActions(),
+                const SizedBox(height: 30),
+                _buildSpecialistsSection(),
+                const SizedBox(height: 30),
+                _buildNextAppointments(),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMedicoActions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Panel Médico',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Primera fila de acciones
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.dashboard,
+                  title: 'Ver Citas',
+                  subtitle: 'Dashboard médico',
+                  color: AppColors.primaryBlue,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const DashboardPage(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.calendar_today,
+                  title: 'Mi Disponibilidad',
+                  subtitle: 'Gestionar horarios',
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MedicoAvailabilityPage(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Segunda fila de acciones
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.medical_information,
+                  title: 'Consejos Médicos',
+                  subtitle: 'Recursos útiles',
+                  color: AppColors.primaryPurple,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MedicalTipsPage(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.people,
+                  title: 'Mis Pacientes',
+                  subtitle: 'Lista de pacientes',
+                  color: Colors.orange,
+                  onTap: () {
+                    _showComingSoonSnackbar('Próximamente: Lista de pacientes');
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Tercera fila (una sola tarjeta centrada)
+
+        // Panel informativo
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.primaryBlue.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info, color: AppColors.primaryBlue, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Panel de Control Médico',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Gestiona tus citas, horarios disponibles y accede a herramientas médicas',
+                      style: TextStyle(
+                        color: AppColors.textLight,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ MÉTODO ÚNICO _buildActionCard CORREGIDO
+  Widget _buildActionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          height: 110,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textDark,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 10, color: AppColors.textLight),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Método auxiliar para mostrar mensaje de "próximamente"
+  void _showComingSoonSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.build, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(message),
+          ],
+        ),
+        backgroundColor: Colors.blue,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Widget _buildPacienteActions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Acciones Rápidas',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // ELIMINAR EL SizedBox CON ALTURA FIJA Y USAR IntrinsicHeight
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.calendar_today,
+                  title: 'Agendar Cita',
+                  subtitle: 'Nueva consulta',
+                  color: AppColors.primaryBlue,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AppointmentBookingPage(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.medical_information,
+                  title: 'Consejos Médicos',
+                  subtitle: 'Recursos útiles',
+                  color: AppColors.primaryPurple,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MedicalTipsPage(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWelcomeCard() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppGradients.cardGradient,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [AppShadows.softShadow],
+        border: Border.all(color: Colors.white.withOpacity(0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    gradient: AppGradients.primaryGradient,
+                    shape: BoxShape.circle,
+                    boxShadow: [AppShadows.mediumShadow],
+                  ),
+                  child: ClipOval(
+                    child: Image.network(
+                      'https://cdn-icons-png.flaticon.com/512/3844/3844988.png',
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.medical_services,
+                          size: 40,
+                          color: Colors.white,
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                          strokeWidth: 2,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: userRole == 'medico'
+                          ? Colors.green
+                          : AppColors.primaryBlue,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [AppShadows.softShadow],
+                    ),
+                    child: Text(
+                      userRole == 'medico' ? 'MÉDICO' : 'PACIENTE',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(
+              userRole == 'medico'
+                  ? 'Bienvenido, Dr. $userName!'
+                  : '¡Hola, $userName! ¿En qué podemos ayudarte?',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              userEmail ?? '',
+              style: TextStyle(fontSize: 16, color: AppColors.textLight),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              userRole == 'medico'
+                  ? 'Panel de control médico'
+                  : 'Sistema de agendamiento de citas',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textLight,
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAppBar() {
     return Container(
       decoration: BoxDecoration(
-        gradient: AppGradients.primaryGradient, // Fondo con gradiente
-        boxShadow: [AppShadows.mediumShadow], // Sombra para profundidad
+        gradient: AppGradients.primaryGradient,
+        boxShadow: [AppShadows.mediumShadow],
       ),
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Logo de la aplicación
               Container(
                 width: 40,
                 height: 40,
@@ -161,7 +612,6 @@ class _HomePageState extends State<HomePage> {
                     height: 20,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
-                      // Fallback si falla la carga de imagen
                       return const Icon(
                         Icons.medical_services,
                         size: 20,
@@ -169,7 +619,6 @@ class _HomePageState extends State<HomePage> {
                       );
                     },
                     loadingBuilder: (context, child, loadingProgress) {
-                      // Indicador de carga
                       if (loadingProgress == null) return child;
                       return const CircularProgressIndicator(
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -180,7 +629,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(width: 12),
-              // Título de la aplicación
               const Text(
                 'Citas Médicas',
                 style: TextStyle(
@@ -189,11 +637,26 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const Spacer(), // Espacio flexible
-              // Botón de notificaciones
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  userRole == 'medico' ? 'Médico' : 'Paciente',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
               IconButton(
                 icon: const Icon(Icons.notifications_none, color: Colors.white),
-                onPressed: () {}, // TODO: Implementar funcionalidad
+                onPressed: () {},
               ),
             ],
           ),
@@ -202,172 +665,8 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /**
-   * Construye la tarjeta de bienvenida con información del usuario
-   */
-  Widget _buildWelcomeCard() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: AppGradients.cardGradient,
-        borderRadius: BorderRadius.circular(25),
-        boxShadow: [AppShadows.softShadow],
-        border: Border.all(color: Colors.white.withOpacity(0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            // Avatar del usuario
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                gradient: AppGradients.primaryGradient,
-                shape: BoxShape.circle,
-                boxShadow: [AppShadows.mediumShadow],
-              ),
-              child: ClipOval(
-                child: Image.network(
-                  'https://cdn-icons-png.flaticon.com/512/3844/3844988.png',
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(
-                      Icons.medical_services,
-                      size: 40,
-                      color: Colors.white,
-                    );
-                  },
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      strokeWidth: 2,
-                    );
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Saludo personalizado
-            Text(
-              '¡Hola, $userName! ¿En qué podemos ayudarte?',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textDark,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            // Email del usuario
-            Text(
-              userEmail ?? '',
-              style: TextStyle(fontSize: 16, color: AppColors.textLight),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // ... (El resto de los métodos _buildSpecialistsSection, _buildNextAppointments, etc. permanecen igual)
 
-  /**
-   * Construye la sección de acciones principales
-   * Dos tarjetas: Agendar Cita y Consejos Médicos
-   */
-  Widget _buildMainActions() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildActionCard(
-            icon: Icons.calendar_today,
-            title: 'Agendar Cita',
-            color: AppColors.primaryBlue,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AppointmentBookingPage(),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildActionCard(
-            icon: Icons.medical_information,
-            title: 'Consejos Médicos',
-            color: AppColors.primaryPurple,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const MedicalTipsPage(),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  /**
-   * Construye una tarjeta de acción individual
-   */
-  Widget _buildActionCard({
-    required IconData icon,
-    required String title,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          height: 140,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Ícono circular
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 30),
-              ),
-              const SizedBox(height: 12),
-              // Título de la acción
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /**
-   * Construye la sección de especialistas médicos
-   * Lista horizontal de especialidades disponibles
-   */
   Widget _buildSpecialistsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -380,9 +679,9 @@ class _HomePageState extends State<HomePage> {
             color: AppColors.textDark,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         SizedBox(
-          height: 120,
+          height: 110,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
@@ -422,57 +721,53 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /**
-   * Construye una tarjeta individual de especialista
-   */
   Widget _buildSpecialistCard(String title, IconData icon, Color color) {
     return Container(
       width: 100,
+      height: 100,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [AppShadows.softShadow],
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Ícono del especialista
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 20),
             ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(height: 8),
-          // Nombre de la especialidad
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textDark,
+            const SizedBox(height: 6),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-            textAlign: TextAlign.center,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  /**
-   * Construye la sección de próximas citas
-   * Usa StreamBuilder para mostrar citas en tiempo real
-   */
   Widget _buildNextAppointments() {
     final user = _auth.currentUser;
     if (user == null) {
       return _buildMessageCard('Usuario no autenticado');
     }
-
-    print('🔄 CONSTRUYENDO _buildNextAppointments para: ${user.uid}');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -486,24 +781,9 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(height: 16),
-        // Stream que escucha cambios en las citas del usuario
         StreamBuilder<List<DocumentSnapshot>>(
           stream: _firebaseService.obtenerCitasUsuario(user.uid),
           builder: (context, snapshot) {
-            // Logs de debug para seguimiento
-            print(' STREAMBUILDER - Estado: ${snapshot.connectionState}');
-            print(' STREAMBUILDER - Tiene error: ${snapshot.hasError}');
-            print(' STREAMBUILDER - Tiene datos: ${snapshot.hasData}');
-            if (snapshot.hasData) {
-              print(
-                ' STREAMBUILDER - Número de documentos: ${snapshot.data!.length}',
-              );
-              // Mostrar orden de las citas en consola
-              for (final doc in snapshot.data!) {
-                print('📄 Cita ID: ${doc.id} - Estado: ${doc['estado']}');
-              }
-            }
-
             if (snapshot.hasError) {
               return _buildErrorCard('Error: ${snapshot.error}');
             }
@@ -526,7 +806,6 @@ class _HomePageState extends State<HomePage> {
                 return Column(
                   children: [
                     const SizedBox(height: 8),
-                    // Lista de citas
                     ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -540,7 +819,6 @@ class _HomePageState extends State<HomePage> {
                           final citaConId = {...citaData, 'id': citaId};
                           return _buildCitaCard(citaConId);
                         } catch (e) {
-                          print('Error construyendo cita card: $e');
                           return _buildErrorCard('Error mostrando cita: $e');
                         }
                       },
@@ -556,11 +834,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ========== WIDGETS AUXILIARES PARA DIFERENTES ESTADOS ==========
-
-  /**
-   * Tarjeta de carga mientras se obtienen las citas
-   */
   Widget _buildLoadingCard() {
     return Card(
       child: Padding(
@@ -576,9 +849,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /**
-   * Tarjeta cuando no hay citas programadas
-   */
   Widget _buildEmptyCard() {
     return Card(
       child: Padding(
@@ -602,9 +872,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /**
-   * Tarjeta de error cuando falla la carga de citas
-   */
   Widget _buildErrorCard(String message) {
     return Card(
       child: Padding(
@@ -627,10 +894,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () {
-                // Forzar rebuild al reintentar
-                setState(() {});
-              },
+              onPressed: () => setState(() {}),
               child: const Text('Reintentar'),
             ),
           ],
@@ -639,24 +903,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /**
-   * Tarjeta genérica para mensajes simples
-   */
   Widget _buildMessageCard(String message) {
     return Card(
       child: Padding(padding: const EdgeInsets.all(16), child: Text(message)),
     );
   }
 
-  // ========== CONSTRUCCIÓN DE TARJETAS DE CITA ==========
-
-  /**
-   * Construye una tarjeta individual para cada cita
-   * Muestra: Especialidad, estado, fecha, hora, motivo y acciones
-   */
   Widget _buildCitaCard(Map<String, dynamic> cita) {
     try {
-      // Manejo seguro de la fecha (Timestamp, DateTime o fallback)
       final fechaHora = cita['fecha_hora'];
       DateTime fecha;
 
@@ -665,10 +919,9 @@ class _HomePageState extends State<HomePage> {
       } else if (fechaHora is DateTime) {
         fecha = fechaHora;
       } else {
-        fecha = DateTime.now(); // Fallback
+        fecha = DateTime.now();
       }
 
-      // Extraer datos de la cita con valores por defecto
       final citaId = cita['id'] ?? 'unknown';
       final estado = cita['estado'] ?? 'pendiente';
       final especialidad = cita['especialidad'] ?? 'Sin especialidad';
@@ -681,7 +934,6 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Fila superior: Especialidad y estado
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -692,7 +944,6 @@ class _HomePageState extends State<HomePage> {
                       fontSize: 16,
                     ),
                   ),
-                  // Badge del estado de la cita
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -714,7 +965,6 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
               const SizedBox(height: 8),
-              // Información de fecha y hora
               Text('Fecha: ${fecha.day}/${fecha.month}/${fecha.year}'),
               Text(
                 'Hora: ${fecha.hour}:${fecha.minute.toString().padLeft(2, '0')}',
@@ -722,7 +972,6 @@ class _HomePageState extends State<HomePage> {
               Text('Motivo: $motivo'),
               const SizedBox(height: 12),
 
-              // Botones de acción solo para citas pendientes
               if (estado == 'pendiente')
                 Row(
                   children: [
@@ -756,7 +1005,6 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     } catch (e) {
-      print('Error en _buildCitaCard: $e');
       return Card(
         margin: const EdgeInsets.only(bottom: 12),
         child: const Padding(
@@ -767,25 +1015,19 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /**
-   * Devuelve el color correspondiente al estado de la cita
-   */
   Color _getColorEstado(String estado) {
     switch (estado) {
       case 'pendiente':
-        return Colors.orange; // Naranja para pendientes
+        return Colors.orange;
       case 'confirmada':
-        return Colors.green; // Verde para confirmadas
+        return Colors.green;
       case 'cancelada':
-        return Colors.red; // Rojo para canceladas
+        return Colors.red;
       default:
-        return Colors.grey; // Gris para estados desconocidos
+        return Colors.grey;
     }
   }
 
-  /**
-   * Navega a la página de edición de cita
-   */
   Future<void> _editarCita(String citaId, Map<String, dynamic> citaData) async {
     await Navigator.push(
       context,
@@ -795,9 +1037,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /**
-   * Muestra diálogo de confirmación y cancela la cita
-   */
   Future<void> _cancelarCita(String citaId) async {
     final result = await showDialog<bool>(
       context: context,
@@ -820,7 +1059,6 @@ class _HomePageState extends State<HomePage> {
     if (result == true) {
       try {
         await _firebaseService.eliminarCita(citaId);
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Cita cancelada exitosamente'),
@@ -838,10 +1076,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /**
-   * Construye la barra de navegación inferior
-   * Permite cambiar entre Inicio, Mensajes y Configuración
-   */
   Widget _buildBottomNavigationBar() {
     return Container(
       decoration: BoxDecoration(

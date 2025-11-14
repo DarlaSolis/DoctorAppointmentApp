@@ -20,8 +20,17 @@ class AboutPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Sobre Nosotros'),
         backgroundColor: Colors.transparent, // Fondo transparente
-        foregroundColor: AppColors.textDark, // Color del texto e íconos
         elevation: 0, // Sin sombra para un look más plano y moderno
+        titleTextStyle: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: AppColors.primaryPurple,
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          color: Color.fromARGB(255, 200, 162, 200),
+          onPressed: () => Navigator.pop(context), // Navegación hacia atrás
+        ),
       ),
 
       // Cuerpo principal de la página

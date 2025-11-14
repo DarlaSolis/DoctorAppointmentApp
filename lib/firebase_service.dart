@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
  * - Firebase Authentication (usuarios)
  * - Cloud Firestore (datos de la aplicación)
  * - Gestión de citas médicas y disponibilidad
+ * - Sistema de roles (Paciente/Médico)
  * 
  * Implementa el patrón Repository para separar la lógica de datos de la UI
  */
@@ -16,6 +17,89 @@ class FirebaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  // ========== SISTEMA DE ROLES - NUEVOS MÉTODOS ==========
+
+  /**
+   * Obtiene el rol de un usuario específico
+   * @param uid ID único del usuario
+   * @return String con el rol ('paciente' o 'medico')
+   */
+  Future<String> obtenerRolUsuario(String uid) async {
+    try {
+      final doc = await _firestore.collection('usuarios').doc(uid).get();
+      if (doc.exists) {
+        return doc.data()?['rol'] ?? 'paciente'; // Default a paciente
+      }
+      return 'paciente'; // Si no existe, retornar paciente por defecto
+    } catch (e) {
+      print('Error obteniendo rol: $e');
+      return 'paciente'; // En caso de error, retornar paciente
+    }
+  }
+
+  /**
+   * Verifica si un usuario tiene rol de médico
+   * @param uid ID único del usuario
+   * @return true si es médico, false si es paciente
+   */
+  Future<bool> esMedico(String uid) async {
+    try {
+      final rol = await obtenerRolUsuario(uid);
+      return rol == 'medico';
+    } catch (e) {
+      print('Error verificando rol médico: $e');
+      return false;
+    }
+  }
+
+  // ========== MÉTODOS PARA DASHBOARD MÉDICO ==========
+
+  /**
+   * Obtiene el total de citas de un médico específico
+   * @param medicoId ID del médico
+   * @return Stream con el número total de citas
+   */
+  Stream<int> obtenerTotalCitasMedico(String medicoId) {
+    return _firestore
+        .collection('citas')
+        .where('medico_id', isEqualTo: medicoId)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
+  }
+
+  /**
+   * Obtiene las citas pendientes de un médico específico
+   * @param medicoId ID del médico
+   * @return Stream con el número de citas pendientes
+   */
+  Stream<int> obtenerCitasPendientesMedico(String medicoId) {
+    return _firestore
+        .collection('citas')
+        .where('medico_id', isEqualTo: medicoId)
+        .where('estado', isEqualTo: 'pendiente')
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
+  }
+
+  /**
+   * Obtiene el total de pacientes únicos de un médico
+   * @param medicoId ID del médico
+   * @return Stream con el número de pacientes únicos
+   */
+  Stream<int> obtenerTotalPacientesMedico(String medicoId) {
+    return _firestore
+        .collection('citas')
+        .where('medico_id', isEqualTo: medicoId)
+        .snapshots()
+        .map((snapshot) {
+          final pacientesIds = <String>{};
+          for (final doc in snapshot.docs) {
+            pacientesIds.add(doc['paciente_id'] as String);
+          }
+          return pacientesIds.length;
+        });
+  }
+
   // ========== COLECCIÓN USUARIOS - CRUD OPERATIONS ==========
 
   /**
@@ -23,6 +107,7 @@ class FirebaseService {
    * @param uid ID único del usuario desde Firebase Auth
    * @param nombre Nombre completo del usuario
    * @param email Correo electrónico del usuario
+   * @param rol Rol del usuario ('paciente' o 'medico')
    * @param telefono Número telefónico (opcional)
    * @param edad Edad del usuario (opcional)
    * @param lugarNacimiento Lugar de nacimiento (opcional)
@@ -34,6 +119,7 @@ class FirebaseService {
     required String uid,
     required String nombre,
     required String email,
+    required String rol,
     String? telefono,
     int? edad,
     String? lugarNacimiento,
@@ -43,6 +129,7 @@ class FirebaseService {
       await _firestore.collection('usuarios').doc(uid).set({
         'nombre': nombre,
         'email': email,
+        'rol': rol,
         'telefono':
             telefono ?? '', // Valores por defecto para campos opcionales
         'edad': edad ?? 0,
@@ -108,36 +195,22 @@ class FirebaseService {
     required DateTime fechaHora,
     required String motivo,
     required String especialidad,
+    required String medicoId,
+    required String medicoNombre,
   }) async {
-    try {
-      // BUSCAR UN MÉDICO DISPONIBLE para esta fecha/hora automáticamente
-      final medicoId = await _obtenerMedicoDisponible(fechaHora, especialidad);
+    final citaData = {
+      'paciente_id': pacienteId,
+      'medico_id': medicoId,
+      'medico_nombre': medicoNombre,
+      'especialidad': especialidad,
+      'fecha_hora': Timestamp.fromDate(fechaHora),
+      'motivo': motivo,
+      'estado': 'pendiente',
+      'fecha_creacion': Timestamp.now(),
+      'ultima_actualizacion': Timestamp.now(),
+    };
 
-      // Crear referencia de documento con ID automático
-      final citaRef = _firestore.collection('citas').doc();
-
-      // Guardar la cita en Firestore
-      await citaRef.set({
-        'id': citaRef.id, // ID único de la cita
-        'paciente_id': pacienteId, // Referencia al paciente
-        'medico_id': medicoId, // Médico asignado automáticamente
-        'fecha_hora': Timestamp.fromDate(
-          fechaHora,
-        ), // Conversión a Timestamp de Firestore
-        'motivo': motivo,
-        'especialidad': especialidad,
-        'estado': 'pendiente', // Estado inicial de la cita
-        'fecha_creacion': FieldValue.serverTimestamp(),
-      });
-
-      // Marcar el horario del médico como ocupado
-      await marcarHorarioOcupado(medicoId, fechaHora);
-
-      print('Cita agendada con médico: $medicoId');
-    } catch (e) {
-      print('Error agendando cita: $e');
-      rethrow;
-    }
+    await _firestore.collection('citas').add(citaData);
   }
 
   /**
@@ -163,13 +236,13 @@ class FirebaseService {
       // Si hay horarios disponibles, usar el primer médico encontrado
       if (horariosDisponibles.docs.isNotEmpty) {
         final medicoId = horariosDisponibles.docs.first['medico_id'] as String;
-        print('Médico disponible encontrado: $medicoId');
+        print('✅ Médico disponible encontrado: $medicoId');
         return medicoId;
       }
 
       // Si no hay disponibles, usar fallback por especialidad
       print(
-        'No hay horarios disponibles, buscando por especialidad: $especialidad',
+        '⚠️ No hay horarios disponibles, buscando por especialidad: $especialidad',
       );
       return await _obtenerMedicoPorEspecialidad(especialidad);
     } catch (e) {
@@ -198,7 +271,7 @@ class FirebaseService {
 
     // Obtener médico o usar médico general por defecto
     final medicoId = medicosPorEspecialidad[especialidad] ?? 'medico_general';
-    print('Usando médico por especialidad: $medicoId');
+    print('✅ Usando médico por especialidad: $medicoId');
     return medicoId;
   }
 
@@ -211,7 +284,7 @@ class FirebaseService {
    */
   Stream<List<DocumentSnapshot>> obtenerCitasUsuario(String usuarioId) {
     try {
-      print('INICIANDO STREAM para usuario: $usuarioId');
+      print('🔍 INICIANDO STREAM para usuario: $usuarioId');
       return _firestore
           .collection('citas')
           .where('paciente_id', isEqualTo: usuarioId)
@@ -221,11 +294,11 @@ class FirebaseService {
             final citas = snapshot.docs.toList();
 
             if (citas.isEmpty) {
-              print('No hay citas para el usuario');
+              print('📭 No hay citas para el usuario');
               return citas;
             }
 
-            print('CITAS RECIBIDAS: ${citas.length}');
+            print('📄 CITAS RECIBIDAS: ${citas.length}');
 
             // ORDENAR POR ESTADO: Pendientes primero, Canceladas al final
             citas.sort((a, b) {
@@ -266,7 +339,7 @@ class FirebaseService {
             return citas;
           })
           .handleError((error) {
-            print('ERROR en stream: $error');
+            print('❌ ERROR en stream: $error');
             throw error; // Propagar error para manejo en UI
           });
     } catch (e) {
@@ -374,7 +447,7 @@ class FirebaseService {
           'ultima_actualizacion': FieldValue.serverTimestamp(),
         });
 
-        print('Cita actualizada con nuevo médico: $nuevoMedicoId');
+        print('✅ Cita actualizada con nuevo médico: $nuevoMedicoId');
       }
     } catch (e) {
       print('Error actualizando cita: $e');
@@ -407,7 +480,7 @@ class FirebaseService {
         'fecha_cancelacion': FieldValue.serverTimestamp(),
       });
 
-      print('Cita cancelada y horario liberado');
+      print('✅ Cita cancelada y horario liberado');
     } catch (e) {
       print('Error eliminando cita: $e');
       rethrow;
@@ -465,7 +538,7 @@ class FirebaseService {
       for (final doc in horarios.docs) {
         await doc.reference.update({'esta_disponible': false});
       }
-      print('Horario ocupado para médico: $medicoId');
+      print('✅ Horario ocupado para médico: $medicoId');
     } catch (e) {
       print('Error marcando horario ocupado: $e');
       // No rethrow - error no crítico para flujo principal
@@ -489,7 +562,7 @@ class FirebaseService {
       for (final doc in horarios.docs) {
         await doc.reference.update({'esta_disponible': true});
       }
-      print('Horario liberado para médico: $medicoId');
+      print('✅ Horario liberado para médico: $medicoId');
     } catch (e) {
       print('Error liberando horario: $e');
       // No rethrow - error no crítico
@@ -551,8 +624,101 @@ class FirebaseService {
           .orderBy('hora_inicio')
           .snapshots();
     } catch (e) {
-      print(' Error obteniendo horarios disponibles: $e');
+      print('❌ Error obteniendo horarios disponibles: $e');
       rethrow;
+    }
+  }
+
+  // ========== MÉTODOS DE DATOS DE EJEMPLO ==========
+
+  /**
+   * Poblar la base de datos con médicos de ejemplo
+   * Útil para desarrollo y demostración
+   */
+  Future<void> poblarMedicosEjemplo() async {
+    try {
+      final List<Map<String, dynamic>> medicos = [
+        {
+          'id': 'medico_001',
+          'nombre': 'Dr. Carlos Rodríguez',
+          'especialidad': 'Cardiólogo',
+          'email': 'carlos.rodriguez@hospital.com',
+          'telefono': '+1234567890',
+          'experiencia': '10 años',
+          'fecha_creacion': FieldValue.serverTimestamp(),
+        },
+        {
+          'id': 'medico_002',
+          'nombre': 'Dra. María González',
+          'especialidad': 'Pediatra',
+          'email': 'maria.gonzalez@hospital.com',
+          'telefono': '+1234567891',
+          'experiencia': '8 años',
+          'fecha_creacion': FieldValue.serverTimestamp(),
+        },
+        {
+          'id': 'medico_003',
+          'nombre': 'Dr. Javier López',
+          'especialidad': 'Dermatólogo',
+          'email': 'javier.lopez@hospital.com',
+          'telefono': '+1234567892',
+          'experiencia': '12 años',
+          'fecha_creacion': FieldValue.serverTimestamp(),
+        },
+      ];
+
+      for (final medico in medicos) {
+        final medicoId = medico['id'] as String;
+        await _firestore.collection('medicos').doc(medicoId).set(medico);
+      }
+
+      print('✅ Médicos de ejemplo creados exitosamente');
+    } catch (e) {
+      print('Error poblando médicos ejemplo: $e');
+    }
+  }
+
+  /**
+   * Poblar horarios de ejemplo para desarrollo
+   */
+  Future<void> poblarHorariosEjemplo() async {
+    try {
+      final ahora = DateTime.now();
+
+      for (int i = 0; i < 7; i++) {
+        final fecha = ahora.add(Duration(days: i));
+
+        // Horarios para cada médico
+        for (int j = 1; j <= 3; j++) {
+          final medicoId = 'medico_00$j';
+
+          // Agregar varios horarios por día
+          await agregarHorarioDisponible(
+            medicoId: medicoId,
+            fecha: fecha,
+            horaInicio: DateTime(fecha.year, fecha.month, fecha.day, 9, 0),
+            horaFin: DateTime(fecha.year, fecha.month, fecha.day, 10, 0),
+          );
+
+          await agregarHorarioDisponible(
+            medicoId: medicoId,
+            fecha: fecha,
+            horaInicio: DateTime(fecha.year, fecha.month, fecha.day, 11, 0),
+            horaFin: DateTime(fecha.year, fecha.month, fecha.day, 12, 0),
+          );
+
+          await agregarHorarioDisponible(
+            medicoId: medicoId,
+            fecha: fecha,
+            horaInicio: DateTime(fecha.year, fecha.month, fecha.day, 15, 0),
+            horaFin: DateTime(fecha.year, fecha.month, fecha.day, 16, 0),
+          );
+        }
+      }
+
+      print('✅ Horarios de ejemplo creados exitosamente');
+    } catch (e) {
+      print('Error poblando horarios ejemplo: $e');
     }
   }
 }

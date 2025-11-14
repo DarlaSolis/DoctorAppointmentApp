@@ -10,6 +10,7 @@ import 'pages/privacy_page.dart';
 import 'pages/about_page.dart';
 import 'pages/medical_tips_page.dart';
 import 'pages/edit_appointment_page.dart';
+import 'pages/dashboard_page.dart';
 
 class Routes {
   static const String login = '/';
@@ -23,6 +24,7 @@ class Routes {
   static const String about = '/about';
   static const String medicalTips = '/medical-tips';
   static const String editCita = '/edit-cita';
+  static const String dashboard = '/dashboard';
 
   static Route<dynamic> generateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {
@@ -46,6 +48,8 @@ class Routes {
         return MaterialPageRoute(builder: (_) => const AboutPage());
       case medicalTips:
         return MaterialPageRoute(builder: (_) => const MedicalTipsPage());
+      case dashboard:
+        return MaterialPageRoute(builder: (_) => const DashboardPage());
       case editCita:
         final args = routeSettings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(

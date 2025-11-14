@@ -10,6 +10,7 @@ import '../firebase_service.dart';
  * - Ver y editar información personal del usuario
  * - Actualizar datos demográficos y de contacto
  * - Gestionar información médica relevante
+ * - Seleccionar y actualizar rol (Paciente/Médico)
  * - Sincronizar cambios con Firebase Firestore
  */
 class ProfileEditPage extends StatefulWidget {
@@ -32,6 +33,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   final TextEditingController _conditionsController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
 
+  // ✅ NUEVO: Variables para el sistema de roles
+  String? _selectedRol;
+  final List<String> _roles = ['paciente', 'medico'];
+
   // Estados de la UI
   bool _isLoading = false; // Indicador de carga inicial de datos
   bool _isSaving = false; // Indicador de guardado de cambios
@@ -46,6 +51,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
    * Carga los datos del usuario desde Firebase Firestore
    * - Obtiene información del usuario autenticado
    * - Rellena los campos del formulario con datos existentes
+   * - Carga el rol actual del usuario
    * - Maneja errores de forma segura
    */
   Future<void> _loadUserData() async {
@@ -64,6 +70,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             _birthPlaceController.text = userData['lugar_nacimiento'] ?? '';
             _conditionsController.text = userData['padecimientos'] ?? '';
             _phoneController.text = userData['telefono'] ?? '';
+            // ✅ NUEVO: Cargar rol del usuario
+            _selectedRol = userData['rol'] ?? 'paciente';
           });
         }
       } catch (e) {
@@ -71,6 +79,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         // Fallback: usar información básica de Firebase Auth
         _nameController.text =
             user.displayName ?? user.email?.split('@').first ?? '';
+        // ✅ NUEVO: Rol por defecto
+        _selectedRol = 'paciente';
       }
     }
 
@@ -80,13 +90,24 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   /**
    * Maneja el proceso de guardado del perfil
    * - Valida el formulario
-   * - Actualiza la información en Firestore
+   * - Actualiza la información en Firestore (INCLUYENDO ROL)
    * - Muestra feedback al usuario
    * - Navega de regreso tras éxito
    */
   Future<void> _saveProfile() async {
     // Validar formulario antes de proceder
     if (!_formKey.currentState!.validate()) return;
+
+    // ✅ NUEVO: Validar que se haya seleccionado un rol
+    if (_selectedRol == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor selecciona un tipo de usuario'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
 
@@ -96,11 +117,12 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         throw Exception('Usuario no autenticado');
       }
 
-      // GUARDAR EN COLECCIÓN USUARIOS DE FIRESTORE
+      // ✅ CORREGIDO: GUARDAR EN COLECCIÓN USUARIOS DE FIRESTORE CON ROL
       await _firebaseService.guardarUsuario(
         uid: user.uid,
         nombre: _nameController.text.trim(),
         email: user.email!,
+        rol: _selectedRol!, // ✅ NUEVO: Incluir el rol
         telefono: _phoneController.text.trim(),
         edad: int.tryParse(
           _ageController.text.trim(),
@@ -117,7 +139,9 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
               children: [
                 const Icon(Icons.check_circle, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
-                const Text('Perfil actualizado correctamente'),
+                Text(
+                  'Perfil actualizado - ${_selectedRol == 'medico' ? 'Médico' : 'Paciente'}',
+                ),
               ],
             ),
             backgroundColor: AppColors.success,
@@ -170,6 +194,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       _birthPlaceController.clear();
       _conditionsController.clear();
       _phoneController.clear();
+      _selectedRol = 'paciente';
     });
   }
 
@@ -180,29 +205,17 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       appBar: AppBar(
         title: const Text('Editar Perfil'),
         backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.textDark,
+        titleTextStyle: const TextStyle(
+          color: AppColors.primaryPurple,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
+          color: Color.fromARGB(255, 200, 162, 200),
           onPressed: () => Navigator.pop(context), // Navegación hacia atrás
         ),
-        actions: [
-          // Mostrar acciones solo cuando no está cargando
-          if (!_isLoading) ...[
-            // Botón para limpiar formulario
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _clearForm,
-              tooltip: 'Limpiar formulario',
-            ),
-            // Botón para guardar cambios
-            IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: _isSaving ? null : _saveProfile,
-              tooltip: 'Guardar cambios',
-            ),
-          ],
-        ],
       ),
       body: _isLoading
           ? const Center(
@@ -230,6 +243,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                       _buildNameField(), // Nombre completo
                       const SizedBox(height: 16),
 
+                      // ✅ NUEVO: Selector de rol
+                      _buildRolSelector(),
+                      const SizedBox(height: 16),
+
                       _buildAgeField(), // Edad
                       const SizedBox(height: 16),
 
@@ -254,7 +271,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   /**
    * Construye el header del perfil con información del usuario
-   * Muestra avatar, nombre, email e ID abreviado
+   * Muestra avatar, nombre, email, ID abreviado y ROL
    */
   Widget _buildProfileHeader() {
     final user = _auth.currentUser;
@@ -278,7 +295,13 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                 shape: BoxShape.circle,
                 boxShadow: [AppShadows.softShadow],
               ),
-              child: const Icon(Icons.person, color: Colors.white, size: 35),
+              child: Icon(
+                _selectedRol == 'medico'
+                    ? Icons.medical_services
+                    : Icons.person,
+                color: Colors.white,
+                size: 35,
+              ),
             ),
             const SizedBox(width: 16),
             // Información del usuario
@@ -310,12 +333,33 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  // ID abreviado del usuario (seguridad)
-                  Text(
-                    'ID: ${user?.uid.substring(0, 8)}...',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textLight.withOpacity(0.7),
+                  // ✅ NUEVO: Mostrar rol actual
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _selectedRol == 'medico'
+                          ? AppColors.primaryBlue.withOpacity(0.1)
+                          : AppColors.primaryPurple.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _selectedRol == 'medico'
+                            ? AppColors.primaryBlue
+                            : AppColors.primaryPurple,
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      _selectedRol == 'medico' ? 'Médico' : 'Paciente',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: _selectedRol == 'medico'
+                            ? AppColors.primaryBlue
+                            : AppColors.primaryPurple,
+                      ),
                     ),
                   ),
                 ],
@@ -324,6 +368,86 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /**
+   * ✅ NUEVO: Selector de rol para el usuario
+   * Permite cambiar entre Paciente y Médico
+   */
+  Widget _buildRolSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Tipo de usuario *',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: _selectedRol,
+          decoration: InputDecoration(
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: const BorderSide(
+                color: AppColors.primaryBlue,
+                width: 2,
+              ),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+          ),
+          items: _roles.map((rol) {
+            return DropdownMenuItem(
+              value: rol,
+              child: Row(
+                children: [
+                  Icon(
+                    rol == 'medico' ? Icons.medical_services : Icons.person,
+                    color: AppColors.primaryPurple,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    rol == 'medico' ? 'Médico' : 'Paciente',
+                    style: const TextStyle(color: AppColors.textDark),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: (value) {
+            setState(() {
+              _selectedRol = value;
+            });
+          },
+          validator: (value) =>
+              value == null ? 'Selecciona un tipo de usuario' : null,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _selectedRol == 'medico'
+              ? 'Acceso al panel médico y estadísticas'
+              : 'Puedes agendar citas médicas',
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.textLight,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
     );
   }
 

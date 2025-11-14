@@ -21,9 +21,17 @@ class PrivacyPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Privacidad'),
         backgroundColor: Colors.transparent, // Diseño sin fondo sólido
-        foregroundColor:
-            AppColors.textDark, // Color de texto oscuro para contraste
         elevation: 0, // Sin sombra para diseño plano y moderno
+        titleTextStyle: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: AppColors.primaryPurple,
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          color: Color.fromARGB(255, 200, 162, 200),
+          onPressed: () => Navigator.pop(context), // Navegación hacia atrás
+        ),
       ),
 
       // Cuerpo principal con contenido de privacidad
