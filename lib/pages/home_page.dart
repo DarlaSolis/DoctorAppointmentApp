@@ -9,7 +9,8 @@ import 'appointment_booking_page.dart';
 import '../firebase_service.dart';
 import 'edit_appointment_page.dart';
 import 'dashboard_page.dart';
-import 'medico_availability_page.dart'; // ✅ AÑADIR ESTA IMPORTACIÓN
+import 'medico_availability_page.dart';
+import 'graphics_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -170,10 +171,6 @@ class _HomePageState extends State<HomePage> {
                 _buildWelcomeCard(),
                 const SizedBox(height: 30),
                 _buildMedicoActions(),
-                const SizedBox(height: 30),
-                _buildSpecialistsSection(),
-                const SizedBox(height: 30),
-                _buildNextAppointments(),
               ],
             ),
           ),
@@ -285,12 +282,17 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(width: 16),
               Expanded(
                 child: _buildActionCard(
-                  icon: Icons.people,
-                  title: 'Mis Pacientes',
-                  subtitle: 'Lista de pacientes',
+                  icon: Icons.bar_chart,
+                  title: 'Estadísticas',
+                  subtitle: 'Gráficas y métricas',
                   color: Colors.orange,
                   onTap: () {
-                    _showComingSoonSnackbar('Próximamente: Lista de pacientes');
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const GraphicsPage(),
+                      ),
+                    );
                   },
                 ),
               ),
