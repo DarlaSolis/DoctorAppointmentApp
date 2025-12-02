@@ -240,48 +240,6 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(width: 16),
               Expanded(
                 child: _buildActionCard(
-                  icon: Icons.calendar_today,
-                  title: 'Mi Disponibilidad',
-                  subtitle: 'Gestionar horarios',
-                  color: Colors.green,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MedicoAvailabilityPage(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Segunda fila de acciones
-        IntrinsicHeight(
-          child: Row(
-            children: [
-              Expanded(
-                child: _buildActionCard(
-                  icon: Icons.medical_information,
-                  title: 'Consejos Médicos',
-                  subtitle: 'Recursos útiles',
-                  color: AppColors.primaryPurple,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MedicalTipsPage(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildActionCard(
                   icon: Icons.bar_chart,
                   title: 'Estadísticas',
                   subtitle: 'Gráficas y métricas',
@@ -300,8 +258,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(height: 16),
-
-        // Tercera fila (una sola tarjeta centrada)
 
         // Panel informativo
         Container(

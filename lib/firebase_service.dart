@@ -17,6 +17,186 @@ class FirebaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  // ========== NUEVOS MÉTODOS PARA HORARIOS AUTOMÁTICOS ==========
+
+  /**
+   * Genera horarios automáticos para un médico (9am - 9pm, citas de 1.5 horas)
+   * @param medicoId ID del médico
+   * @param fecha Fecha para generar horarios
+   * @param inicioHora Hora de inicio (default: 9)
+   * @param finHora Hora de fin (default: 21)
+   * @param duracionCita Duración de cada cita en horas (default: 1.5)
+   */
+  Future<void> generarHorariosAutomaticos({
+    required String medicoId,
+    required DateTime fecha,
+    int inicioHora = 9,
+    int finHora = 21,
+    double duracionCita = 1.5,
+  }) async {
+    try {
+      // Verificar si ya existen horarios para esta fecha
+      final fechaNormalizada = DateTime(fecha.year, fecha.month, fecha.day);
+
+      final horariosExistentes = await _firestore
+          .collection('disponibilidad_medicos')
+          .where('medico_id', isEqualTo: medicoId)
+          .where('fecha', isEqualTo: Timestamp.fromDate(fechaNormalizada))
+          .get();
+
+      if (horariosExistentes.docs.isNotEmpty) {
+        print('⚠️ Ya existen horarios para esta fecha');
+        return;
+      }
+
+      // Generar horarios cada 1.5 horas desde inicioHora hasta finHora
+      double horaActual = inicioHora.toDouble();
+      final List<Map<String, dynamic>> horarios = [];
+
+      while (horaActual + duracionCita <= finHora) {
+        final horaEntera = horaActual.toInt();
+        final minutos = ((horaActual - horaEntera) * 60).toInt();
+
+        final horaInicio = DateTime(
+          fecha.year,
+          fecha.month,
+          fecha.day,
+          horaEntera,
+          minutos,
+        );
+
+        final horaFinDouble = horaActual + duracionCita;
+        final horaFinEntera = horaFinDouble.toInt();
+        final minutosFin = ((horaFinDouble - horaFinEntera) * 60).toInt();
+
+        final horaFin = DateTime(
+          fecha.year,
+          fecha.month,
+          fecha.day,
+          horaFinEntera,
+          minutosFin,
+        );
+
+        // ID único para el horario
+        final horarioId =
+            '${medicoId}_${fecha.millisecondsSinceEpoch}_${horaActual}';
+
+        horarios.add({
+          'id': horarioId,
+          'medico_id': medicoId,
+          'fecha': Timestamp.fromDate(fechaNormalizada),
+          'hora_inicio': Timestamp.fromDate(horaInicio),
+          'hora_fin': Timestamp.fromDate(horaFin),
+          'esta_disponible': true,
+          'fecha_creacion': FieldValue.serverTimestamp(),
+          'duracion_horas': duracionCita,
+        });
+
+        // Incrementar hora para el siguiente horario
+        horaActual += duracionCita;
+      }
+
+      // Guardar todos los horarios en batch
+      final batch = _firestore.batch();
+
+      for (final horario in horarios) {
+        final docRef = _firestore
+            .collection('disponibilidad_medicos')
+            .doc(horario['id']);
+        batch.set(docRef, horario);
+      }
+
+      await batch.commit();
+      print('✅ Horarios generados: ${horarios.length} para médico $medicoId');
+    } catch (e) {
+      print('❌ Error generando horarios automáticos: $e');
+      rethrow;
+    }
+  }
+
+  /**
+   * Verifica y genera horarios automáticos para los próximos 30 días
+   * @param medicoId ID del médico
+   */
+  Future<void> generarHorariosFuturos(String medicoId) async {
+    try {
+      final hoy = DateTime.now();
+
+      for (int i = 0; i < 30; i++) {
+        final fechaFutura = hoy.add(Duration(days: i));
+
+        // Solo generar para días hábiles (lunes a viernes)
+        if (fechaFutura.weekday >= DateTime.monday &&
+            fechaFutura.weekday <= DateTime.friday) {
+          await generarHorariosAutomaticos(
+            medicoId: medicoId,
+            fecha: fechaFutura,
+          );
+        }
+      }
+
+      print('✅ Horarios futuros generados para 30 días');
+    } catch (e) {
+      print('❌ Error generando horarios futuros: $e');
+    }
+  }
+
+  /**
+   * Obtiene el próximo horario disponible para un médico en una fecha
+   * @param medicoId ID del médico
+   * @param fecha Fecha deseada
+   * @return El próximo horario disponible o null si no hay
+   */
+  Future<Map<String, dynamic>?> obtenerProximoHorarioDisponible(
+    String medicoId,
+    DateTime fecha,
+  ) async {
+    try {
+      final fechaNormalizada = DateTime(fecha.year, fecha.month, fecha.day);
+
+      final snapshot = await _firestore
+          .collection('disponibilidad_medicos')
+          .where('medico_id', isEqualTo: medicoId)
+          .where('fecha', isEqualTo: Timestamp.fromDate(fechaNormalizada))
+          .where('esta_disponible', isEqualTo: true)
+          .orderBy('hora_inicio')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return {'id': snapshot.docs.first.id, ...snapshot.docs.first.data()};
+      }
+
+      // Si no hay horarios, generar automáticamente
+      await generarHorariosAutomaticos(
+        medicoId: medicoId,
+        fecha: fechaNormalizada,
+      );
+
+      // Intentar nuevamente después de generar
+      final nuevoSnapshot = await _firestore
+          .collection('disponibilidad_medicos')
+          .where('medico_id', isEqualTo: medicoId)
+          .where('fecha', isEqualTo: Timestamp.fromDate(fechaNormalizada))
+          .where('esta_disponible', isEqualTo: true)
+          .orderBy('hora_inicio')
+          .limit(1)
+          .get();
+
+      if (nuevoSnapshot.docs.isNotEmpty) {
+        return {
+          'id': nuevoSnapshot.docs.first.id,
+          ...nuevoSnapshot.docs.first.data(),
+        };
+      }
+
+      return null;
+    } catch (e) {
+      print('❌ Error obteniendo próximo horario: $e');
+      return null;
+    }
+  }
+
   // ========== SISTEMA DE ROLES - NUEVOS MÉTODOS ==========
 
   /**
@@ -720,5 +900,33 @@ class FirebaseService {
     } catch (e) {
       print('Error poblando horarios ejemplo: $e');
     }
+  }
+
+  // Método para normalizar fecha (solo año, mes, día)
+  DateTime _normalizarFecha(DateTime fecha) {
+    return DateTime(fecha.year, fecha.month, fecha.day);
+  }
+
+  // Método para normalizar hora (solo hora y minutos)
+  DateTime _normalizarHora(DateTime fechaHora) {
+    return DateTime(
+      fechaHora.year,
+      fechaHora.month,
+      fechaHora.day,
+      fechaHora.hour,
+      fechaHora.minute,
+    );
+  }
+
+  // Método para comparar si dos fechas son del mismo día
+  bool _mismoDia(DateTime fecha1, DateTime fecha2) {
+    return fecha1.year == fecha2.year &&
+        fecha1.month == fecha2.month &&
+        fecha1.day == fecha2.day;
+  }
+
+  // Método para comparar si dos horas son iguales (ignorando segundos)
+  bool _mismaHora(DateTime hora1, DateTime hora2) {
+    return hora1.hour == hora2.hour && hora1.minute == hora2.minute;
   }
 }

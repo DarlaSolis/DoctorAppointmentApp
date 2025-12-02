@@ -1,23 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'firebase_options.dart';
 import 'routes.dart';
 import 'app_colors.dart';
 import 'bloc/dashboard_bloc.dart';
 
-/**
- * Función principal de la aplicación - Punto de entrada de la app
- */
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
-/**
- * Widget principal de la aplicación - MyApp
- */
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -33,22 +28,28 @@ class MyApp extends StatelessWidget {
         initialRoute: Routes.login,
         onGenerateRoute: Routes.generateRoute,
 
-        // Tema personalizado de la aplicación CORREGIDO
-        theme: ThemeData(
-          // Color primario de la aplicación
-          primaryColor: AppColors.primaryBlue,
+        // SOLUCIÓN: Configuración mínima que funciona
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('en', 'US'), // Solo inglés por ahora
+          Locale('es', 'ES'), // Español pero sin delegados específicos
+        ],
+        locale: const Locale('en', 'US'), // Usar inglés temporalmente
 
-          // Esquema de color principal
+        theme: ThemeData(
+          useMaterial3: true,
+          primaryColor: AppColors.primaryBlue,
           colorScheme: ColorScheme.fromSeed(
             seedColor: AppColors.primaryBlue,
             primary: AppColors.primaryBlue,
             secondary: AppColors.primaryPurple,
+            brightness: Brightness.light,
           ),
-
-          // Color de fondo por defecto para Scaffold
           scaffoldBackgroundColor: AppColors.background,
-
-          // Tema personalizado para AppBar
           appBarTheme: const AppBarTheme(
             backgroundColor: AppColors.primaryBlue,
             foregroundColor: Colors.white,
@@ -61,8 +62,6 @@ class MyApp extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-
-          // Tema personalizado para botones elevados - CORREGIDO
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryBlue,
@@ -77,18 +76,7 @@ class MyApp extends StatelessWidget {
               ),
             ),
           ),
-
-          // Tema para tarjetas - CORREGIDO (CardThemeData en lugar de CardTheme)
-          cardTheme: CardThemeData(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.all(8),
-            color: Colors.white,
-          ),
-
-          // Tema para inputs
+          cardColor: Colors.white,
           inputDecorationTheme: InputDecorationTheme(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -122,11 +110,7 @@ class MyApp extends StatelessWidget {
             labelStyle: const TextStyle(color: AppColors.textLight),
             hintStyle: TextStyle(color: Colors.grey.shade500),
           ),
-
-          // Tema para íconos
           iconTheme: const IconThemeData(color: AppColors.primaryBlue),
-
-          // Tema para texto
           textTheme: const TextTheme(
             displayLarge: TextStyle(
               color: AppColors.textDark,
@@ -143,18 +127,7 @@ class MyApp extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-
-          // Usar Material 3 (puedes cambiar a false si prefieres Material 2)
-          useMaterial3: true,
         ),
-
-        // Configuración adicional para una experiencia más fluida
-        builder: (context, child) {
-          return MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
-            child: child!,
-          );
-        },
       ),
     );
   }

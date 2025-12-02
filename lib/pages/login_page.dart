@@ -29,6 +29,7 @@ class _LoginPageState extends State<LoginPage>
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
+  final _confirmPassCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
 
   String _selectedRol = 'paciente';
@@ -41,7 +42,13 @@ class _LoginPageState extends State<LoginPage>
   // Estados de la UI
   bool _loading = false; // Indicador de carga durante login/registro
   bool _obscureText = true; // Mostrar/ocultar contraseña
+  bool _obscureConfirmText = true; // Mostrar/ocultar confirmación de contraseña
   bool _isLogin = true; // Alternar entre login y registro
+
+  // Seguimiento de fortaleza de contraseña
+  double _passwordStrength = 0.0;
+  String _passwordFeedback = '';
+  bool _showStrengthIndicator = false;
 
   // Animaciones
   late AnimationController _animationController;
@@ -77,6 +84,7 @@ class _LoginPageState extends State<LoginPage>
     _animationController.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
+    _confirmPassCtrl.dispose();
     _nameCtrl.dispose();
     super.dispose();
   }
@@ -91,9 +99,14 @@ class _LoginPageState extends State<LoginPage>
     setState(() {
       _emailCtrl.clear();
       _passCtrl.clear();
+      _confirmPassCtrl.clear();
       _nameCtrl.clear();
       _obscureText = true;
+      _obscureConfirmText = true;
       _selectedRol = 'paciente';
+      _passwordStrength = 0.0;
+      _passwordFeedback = '';
+      _showStrengthIndicator = false;
     });
 
     // Mostrar confirmación
@@ -115,6 +128,51 @@ class _LoginPageState extends State<LoginPage>
         ),
       );
     }
+  }
+
+  /**
+   * Calcula la fortaleza de la contraseña
+   */
+  void _calculatePasswordStrength(String password) {
+    double strength = 0.0;
+    String feedback = '';
+
+    if (password.isEmpty) {
+      setState(() {
+        _passwordStrength = 0.0;
+        _passwordFeedback = '';
+        _showStrengthIndicator = false;
+      });
+      return;
+    }
+
+    // Longitud mínima
+    if (password.length >= 6) strength += 0.2;
+    if (password.length >= 8) strength += 0.2;
+
+    // Mayúsculas
+    if (RegExp(r'[A-Z]').hasMatch(password)) strength += 0.2;
+
+    // Números
+    if (RegExp(r'[0-9]').hasMatch(password)) strength += 0.2;
+
+    // Caracteres especiales
+    if (RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) strength += 0.2;
+
+    // Determinar feedback
+    if (strength < 0.4) {
+      feedback = 'Débil - Usa mayúsculas, números y caracteres especiales';
+    } else if (strength < 0.7) {
+      feedback = 'Moderada - Podría ser más segura';
+    } else {
+      feedback = 'Fuerte - ¡Excelente contraseña!';
+    }
+
+    setState(() {
+      _passwordStrength = strength;
+      _passwordFeedback = feedback;
+      _showStrengthIndicator = true;
+    });
   }
 
   /**
@@ -167,6 +225,20 @@ class _LoginPageState extends State<LoginPage>
    */
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Validar que las contraseñas coincidan
+    if (_passCtrl.text != _confirmPassCtrl.text) {
+      _showErrorSnackbar('Las contraseñas no coinciden');
+      return;
+    }
+
+    // Validar fortaleza de contraseña
+    if (_passwordStrength < 0.4 && !_isLogin) {
+      _showErrorSnackbar(
+        'La contraseña es demasiado débil. Intenta una más segura.',
+      );
+      return;
+    }
 
     setState(() => _loading = true);
 
@@ -244,6 +316,13 @@ class _LoginPageState extends State<LoginPage>
   }
 
   /**
+   * Alterna entre mostrar y ocultar la confirmación de contraseña
+   */
+  void _toggleConfirmPasswordVisibility() {
+    setState(() => _obscureConfirmText = !_obscureConfirmText);
+  }
+
+  /**
    * Cambia entre modo Login y Registro
    * También limpia el formulario al cambiar
    */
@@ -252,7 +331,19 @@ class _LoginPageState extends State<LoginPage>
       _isLogin = !_isLogin;
       _formKey.currentState?.reset();
       _selectedRol = 'paciente'; // ✅ Resetear rol al cambiar
+      _passwordStrength = 0.0;
+      _passwordFeedback = '';
+      _showStrengthIndicator = false;
     });
+  }
+
+  /**
+   * Devuelve el color según la fortaleza de la contraseña
+   */
+  Color _getStrengthColor(double strength) {
+    if (strength < 0.4) return Colors.red;
+    if (strength < 0.7) return Colors.orange;
+    return Colors.green;
   }
 
   @override
@@ -418,6 +509,18 @@ class _LoginPageState extends State<LoginPage>
                 _buildPasswordField(),
                 const SizedBox(height: 20),
 
+                // Indicador de fortaleza de contraseña (solo en registro)
+                if (!_isLogin && _showStrengthIndicator) ...[
+                  _buildPasswordStrengthIndicator(),
+                  const SizedBox(height: 10),
+                ],
+
+                // Campo de confirmación de contraseña (solo en registro)
+                if (!_isLogin) ...[
+                  _buildConfirmPasswordField(),
+                  const SizedBox(height: 20),
+                ],
+
                 // Olvidó contraseña solo en login
                 if (_isLogin) ...[
                   _buildForgotPassword(),
@@ -444,6 +547,7 @@ class _LoginPageState extends State<LoginPage>
   Widget _buildNameField() {
     return TextFormField(
       controller: _nameCtrl,
+      readOnly: _loading,
       style: const TextStyle(color: AppColors.textDark),
       decoration: InputDecoration(
         labelText: 'Nombre completo',
@@ -501,16 +605,20 @@ class _LoginPageState extends State<LoginPage>
           child: DropdownButtonHideUnderline(
             child: DropdownButtonFormField<String>(
               value: _selectedRol,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                 filled: true,
-                fillColor: Colors.transparent,
+                fillColor: _loading ? Colors.grey[100] : Colors.transparent,
               ),
-              icon: const Icon(
+              icon: Icon(
                 Icons.arrow_drop_down,
-                color: AppColors.primaryPurple,
+                color: _loading ? Colors.grey : AppColors.primaryPurple,
               ),
+              iconEnabledColor: _loading
+                  ? Colors.grey
+                  : AppColors.primaryPurple,
+              iconDisabledColor: Colors.grey,
               items: _roles.map((rol) {
                 return DropdownMenuItem(
                   value: rol,
@@ -518,23 +626,27 @@ class _LoginPageState extends State<LoginPage>
                     children: [
                       Icon(
                         rol == 'medico' ? Icons.medical_services : Icons.person,
-                        color: AppColors.primaryPurple,
+                        color: _loading ? Colors.grey : AppColors.primaryPurple,
                         size: 20,
                       ),
                       const SizedBox(width: 12),
                       Text(
                         rol == 'medico' ? 'Médico' : 'Paciente',
-                        style: const TextStyle(color: AppColors.textDark),
+                        style: TextStyle(
+                          color: _loading ? Colors.grey : AppColors.textDark,
+                        ),
                       ),
                     ],
                   ),
                 );
               }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedRol = value ?? 'paciente';
-                });
-              },
+              onChanged: _loading
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _selectedRol = value ?? 'paciente';
+                      });
+                    },
               validator: (value) =>
                   value == null ? 'Selecciona un tipo de usuario' : null,
             ),
@@ -547,7 +659,7 @@ class _LoginPageState extends State<LoginPage>
               : 'Podrás agendar citas médicas',
           style: TextStyle(
             fontSize: 12,
-            color: AppColors.textLight,
+            color: _loading ? Colors.grey : AppColors.textLight,
             fontStyle: FontStyle.italic,
           ),
         ),
@@ -561,6 +673,7 @@ class _LoginPageState extends State<LoginPage>
   Widget _buildEmailField() {
     return TextFormField(
       controller: _emailCtrl,
+      readOnly: _loading,
       keyboardType: TextInputType.emailAddress,
       style: const TextStyle(color: AppColors.textDark),
       decoration: InputDecoration(
@@ -596,6 +709,7 @@ class _LoginPageState extends State<LoginPage>
   Widget _buildPasswordField() {
     return TextFormField(
       controller: _passCtrl,
+      readOnly: _loading,
       obscureText: _obscureText,
       style: const TextStyle(color: AppColors.textDark),
       decoration: InputDecoration(
@@ -605,9 +719,57 @@ class _LoginPageState extends State<LoginPage>
         suffixIcon: IconButton(
           icon: Icon(
             _obscureText ? Icons.visibility : Icons.visibility_off,
-            color: AppColors.primaryPurple,
+            color: _loading ? Colors.grey : AppColors.primaryPurple,
           ),
-          onPressed: _togglePasswordVisibility,
+          onPressed: _loading ? null : _togglePasswordVisibility,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+        ),
+        filled: true,
+        fillColor: Colors.white,
+      ),
+      onChanged: (value) {
+        if (!_isLogin) {
+          _calculatePasswordStrength(value);
+        }
+      },
+      validator: (v) {
+        if (v == null || v.isEmpty) return 'Ingresa tu contraseña';
+        if (v.length < 6) return 'Mínimo 6 caracteres';
+        return null;
+      },
+    );
+  }
+
+  /**
+   * Campo de texto para confirmar contraseña (solo en registro)
+   */
+  Widget _buildConfirmPasswordField() {
+    return TextFormField(
+      controller: _confirmPassCtrl,
+      readOnly: _loading,
+      obscureText: _obscureConfirmText,
+      style: const TextStyle(color: AppColors.textDark),
+      decoration: InputDecoration(
+        labelText: 'Confirmar contraseña',
+        labelStyle: const TextStyle(color: AppColors.textLight),
+        prefixIcon: Icon(Icons.lock_outline, color: AppColors.primaryPurple),
+        suffixIcon: IconButton(
+          icon: Icon(
+            _obscureConfirmText ? Icons.visibility : Icons.visibility_off,
+            color: _loading ? Colors.grey : AppColors.primaryPurple,
+          ),
+          onPressed: _loading ? null : _toggleConfirmPasswordVisibility,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
@@ -625,10 +787,66 @@ class _LoginPageState extends State<LoginPage>
         fillColor: Colors.white,
       ),
       validator: (v) {
-        if (v == null || v.isEmpty) return 'Ingresa tu contraseña';
-        if (v.length < 6) return 'Mínimo 6 caracteres';
+        if (!_isLogin && (v == null || v.isEmpty)) {
+          return 'Confirma tu contraseña';
+        }
+        if (!_isLogin && v != _passCtrl.text) {
+          return 'Las contraseñas no coinciden';
+        }
         return null;
       },
+    );
+  }
+
+  /**
+   * Indicador visual de fortaleza de contraseña
+   */
+  Widget _buildPasswordStrengthIndicator() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Fortaleza: ',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+              ),
+            ),
+            Text(
+              _passwordStrength < 0.4
+                  ? 'Débil'
+                  : _passwordStrength < 0.7
+                  ? 'Moderada'
+                  : 'Fuerte',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: _getStrengthColor(_passwordStrength),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: _passwordStrength,
+          backgroundColor: Colors.grey[300],
+          color: _getStrengthColor(_passwordStrength),
+          minHeight: 6,
+          borderRadius: BorderRadius.circular(3),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _passwordFeedback,
+          style: TextStyle(
+            fontSize: 12,
+            color: _getStrengthColor(_passwordStrength),
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
     );
   }
 
@@ -639,8 +857,12 @@ class _LoginPageState extends State<LoginPage>
     return Align(
       alignment: Alignment.centerRight,
       child: TextButton(
-        onPressed: () => Navigator.pushNamed(context, Routes.forgot),
-        style: TextButton.styleFrom(foregroundColor: AppColors.primaryPurple),
+        onPressed: _loading
+            ? null
+            : () => Navigator.pushNamed(context, Routes.forgot),
+        style: TextButton.styleFrom(
+          foregroundColor: _loading ? Colors.grey : AppColors.primaryPurple,
+        ),
         child: const Text(
           '¿Olvidó su contraseña?',
           style: TextStyle(fontWeight: FontWeight.w600),
@@ -713,8 +935,10 @@ class _LoginPageState extends State<LoginPage>
         ),
         const SizedBox(width: 8),
         TextButton(
-          onPressed: _toggleLoginRegister,
-          style: TextButton.styleFrom(foregroundColor: AppColors.primaryPurple),
+          onPressed: _loading ? null : _toggleLoginRegister,
+          style: TextButton.styleFrom(
+            foregroundColor: _loading ? Colors.grey : AppColors.primaryPurple,
+          ),
           child: Text(
             _isLogin ? 'Crear cuenta' : 'Iniciar sesión',
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
